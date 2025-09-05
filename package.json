@@ -1,0 +1,40 @@
+{
+  "name": "devshop",
+  "version": "1.0.0",
+  "description": "Self-improving development shop using MCP and AI agents",
+  "main": "client/devshop-mcp.js",
+  "type": "module",
+  "scripts": {
+    "start": "node client/devshop-mcp.js",
+    "setup": "node client/setup.js",
+    "test": "node client/devshop-mcp.js test",
+    "ba": "node client/devshop-mcp.js ba",
+    "dev": "node client/devshop-mcp.js dev",
+    "logs": "node client/devshop-mcp.js logs"
+  },
+  "bin": {
+    "devshop": "./client/devshop-mcp.js"
+  },
+  "keywords": [
+    "mcp",
+    "ai",
+    "development",
+    "automation",
+    "agents"
+  ],
+  "author": "DevShop",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@octokit/rest": "^20.0.2",
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "openai": "^4.28.4",
+    "winston": "^3.11.0",
+    "uuid": "^9.0.1",
+    "chalk": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

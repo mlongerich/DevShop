@@ -1,0 +1,55 @@
+{
+  "models": {
+    "ba": "gpt-4o-mini",
+    "developer": "gpt-4o-mini",
+    "default": "gpt-4o-mini"
+  },
+  "github": {
+    "token": "env:GITHUB_TOKEN",
+    "default_org": "env:GITHUB_ORG"
+  },
+  "openai": {
+    "api_key": "env:OPENAI_API_KEY"
+  },
+  "logging": {
+    "level": "info",
+    "file_logging": true,
+    "console_logging": true
+  },
+  "cost_controls": {
+    "max_tokens_per_session": 10000,
+    "max_cost_per_session": 5.00,
+    "alert_thresholds": {
+      "tokens": 8000,
+      "cost": 4.00
+    }
+  },
+  "retry_settings": {
+    "max_retries": 3,
+    "retry_delay_ms": 1000,
+    "exponential_backoff": true
+  },
+  "mcp_servers": {
+    "github": {
+      "path": "servers/github-server.js",
+      "timeout_ms": 30000
+    },
+    "openai": {
+      "path": "servers/openai-server.js",
+      "timeout_ms": 60000
+    },
+    "logging": {
+      "path": "servers/logging-server.js",
+      "timeout_ms": 5000
+    },
+    "state": {
+      "path": "servers/state-server.js",
+      "timeout_ms": 5000
+    }
+  },
+  "directories": {
+    "logs": "logs",
+    "state": "logs",
+    "prompts": "prompts"
+  }
+}
