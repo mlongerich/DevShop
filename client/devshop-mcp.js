@@ -11,6 +11,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import GitHubDirectClient from './github-direct-client.js';
+import LiteLLMDirectClient from './litellm-direct-client.js';
+import LoggingDirectClient from './logging-direct-client.js';
+import StateDirectClient from './state-direct-client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -72,6 +75,24 @@ class DevShopOrchestrator {
           const githubClient = new GitHubDirectClient(githubToken);
           await githubClient.connect();
           this.mcpClients[serverName] = githubClient;
+          console.log(chalk.green(`✓ Connected to ${serverName} MCP server (direct)`));
+        } else if (serverName === 'litellm' && config.type === 'local') {
+          // Use direct LiteLLM client
+          const litellmClient = new LiteLLMDirectClient();
+          await litellmClient.connect();
+          this.mcpClients[serverName] = litellmClient;
+          console.log(chalk.green(`✓ Connected to ${serverName} MCP server (direct)`));
+        } else if (serverName === 'logging' && config.type === 'local') {
+          // Use direct Logging client
+          const loggingClient = new LoggingDirectClient();
+          await loggingClient.connect();
+          this.mcpClients[serverName] = loggingClient;
+          console.log(chalk.green(`✓ Connected to ${serverName} MCP server (direct)`));
+        } else if (serverName === 'state' && config.type === 'local') {
+          // Use direct State client
+          const stateClient = new StateDirectClient();
+          await stateClient.connect();
+          this.mcpClients[serverName] = stateClient;
           console.log(chalk.green(`✓ Connected to ${serverName} MCP server (direct)`));
         } else {
           await this.connectToMCPServer(serverName, config);
@@ -140,6 +161,15 @@ class DevShopOrchestrator {
       let result;
       if (serverName === 'github' && client instanceof GitHubDirectClient) {
         // Use direct GitHub client
+        result = await client.callTool(toolName, args);
+      } else if (serverName === 'litellm' && client instanceof LiteLLMDirectClient) {
+        // Use direct LiteLLM client
+        result = await client.callTool(toolName, args);
+      } else if (serverName === 'logging' && client instanceof LoggingDirectClient) {
+        // Use direct Logging client
+        result = await client.callTool(toolName, args);
+      } else if (serverName === 'state' && client instanceof StateDirectClient) {
+        // Use direct State client
         result = await client.callTool(toolName, args);
       } else {
         // Use standard MCP client
@@ -233,7 +263,7 @@ class DevShopOrchestrator {
   async checkLimits() {
     if (!this.activeSession) return true;
 
-    const usage = await this.callMCPTool('openai', 'openai_check_limits', {
+    const usage = await this.callMCPTool('litellm', 'llm_check_limits', {
       max_tokens: this.activeSession.tokenBudget,
       max_cost: this.activeSession.costBudget
     });
@@ -264,7 +294,7 @@ class DevShopOrchestrator {
       ];
 
       // Create agent prompt
-      const promptResult = await this.callMCPTool('openai', 'openai_create_agent_prompt', {
+      const promptResult = await this.callMCPTool('litellm', 'llm_create_agent_prompt', {
         agent_role: 'ba',
         project_context: `Analyzing repository ${repoOwner}/${repoName} for feature: ${featureDescription}`,
         session_id: sessionId,
@@ -291,10 +321,11 @@ class DevShopOrchestrator {
         }
       ];
 
-      const completion = await this.callMCPTool('openai', 'openai_chat_completion', {
+      const completion = await this.callMCPTool('litellm', 'llm_chat_completion', {
         messages: messages,
         model: this.config.models.ba,
-        api_key: this.config.openai.api_key,
+        api_key: this.config.llm.api_key,
+        base_url: this.config.llm.base_url,
         session_id: sessionId,
         agent_role: 'ba'
       });
@@ -336,7 +367,7 @@ class DevShopOrchestrator {
         console.log(chalk.green(`✅ ${issueResult.content[0].text}`));
       }
 
-      const usage = await this.callMCPTool('openai', 'openai_get_usage', {});
+      const usage = await this.callMCPTool('litellm', 'llm_get_usage', {});
       const usageData = JSON.parse(usage.content[0].text);
       console.log(chalk.gray(`\n💰 Session cost: $${usageData.total_cost.toFixed(4)} (${usageData.total_tokens} tokens)`));
 
@@ -369,7 +400,7 @@ class DevShopOrchestrator {
       ];
 
       // Create agent prompt
-      const promptResult = await this.callMCPTool('openai', 'openai_create_agent_prompt', {
+      const promptResult = await this.callMCPTool('litellm', 'llm_create_agent_prompt', {
         agent_role: 'developer',
         project_context: `Implementing issue #${issueNumber} in ${repoOwner}/${repoName}: ${issueData.title}`,
         session_id: sessionId,
@@ -396,10 +427,11 @@ class DevShopOrchestrator {
         }
       ];
 
-      const completion = await this.callMCPTool('openai', 'openai_chat_completion', {
+      const completion = await this.callMCPTool('litellm', 'llm_chat_completion', {
         messages: messages,
         model: this.config.models.developer,
-        api_key: this.config.openai.api_key,
+        api_key: this.config.llm.api_key,
+        base_url: this.config.llm.base_url,
         session_id: sessionId,
         agent_role: 'developer',
         max_tokens: 2000
@@ -425,7 +457,7 @@ class DevShopOrchestrator {
       // If the response suggests creating files, we would implement that here
       // For MVP, we're focusing on the basic workflow
 
-      const usage = await this.callMCPTool('openai', 'openai_get_usage', {});
+      const usage = await this.callMCPTool('litellm', 'llm_get_usage', {});
       const usageData = JSON.parse(usage.content[0].text);
       console.log(chalk.gray(`\n💰 Session cost: $${usageData.total_cost.toFixed(4)} (${usageData.total_tokens} tokens)`));
 
@@ -470,6 +502,15 @@ class DevShopOrchestrator {
         if (serverName === 'github' && client instanceof GitHubDirectClient) {
           // Use direct GitHub client
           toolsResponse = await client.listTools();
+        } else if (serverName === 'litellm' && client instanceof LiteLLMDirectClient) {
+          // Use direct LiteLLM client
+          toolsResponse = await client.listTools();
+        } else if (serverName === 'logging' && client instanceof LoggingDirectClient) {
+          // Use direct Logging client
+          toolsResponse = await client.listTools();
+        } else if (serverName === 'state' && client instanceof StateDirectClient) {
+          // Use direct State client
+          toolsResponse = await client.listTools();
         } else {
           // Use standard MCP client
           toolsResponse = await client.request({
@@ -496,14 +537,15 @@ class DevShopOrchestrator {
     // Test specific functionality if we can identify the right tools
     console.log(chalk.blue('\nTesting specific operations...'));
     
-    // Test OpenAI if available
+    // Test LiteLLM if available
     try {
-      const openaiClient = this.mcpClients.openai;
-      if (openaiClient) {
-        const result = await this.callMCPTool('openai', 'openai_chat_completion', {
+      const litellmClient = this.mcpClients.litellm;
+      if (litellmClient) {
+        const result = await this.callMCPTool('litellm', 'llm_chat_completion', {
           messages: [{ role: 'user', content: 'Hello, just testing the connection.' }],
-          model: 'gpt-4o-mini',
-          api_key: this.config.openai.api_key,
+          model: 'gpt-5-mini',
+          api_key: this.config.llm.api_key,
+          base_url: this.config.llm.base_url,
           max_tokens: 10
         });
         console.log(chalk.green('✓ OpenAI API test successful'));

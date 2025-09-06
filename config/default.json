@@ -1,15 +1,20 @@
 {
   "models": {
-    "ba": "gpt-4o-mini",
-    "developer": "gpt-4o-mini",
-    "default": "gpt-4o-mini"
+    "ba": "claude-3.5-sonnet",
+    "developer": "gpt-5-pro", 
+    "default": "gpt-5-mini"
+  },
+  "llm": {
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "env:OPENAI_API_KEY",
+    "litellm_proxy": {
+      "enabled": false,
+      "url": "http://localhost:4000"
+    }
   },
   "github": {
     "token": "env:GITHUB_TOKEN",
     "default_org": "env:GITHUB_ORG"
-  },
-  "openai": {
-    "api_key": "env:OPENAI_API_KEY"
   },
   "logging": {
     "level": "info",
@@ -35,9 +40,9 @@
       "image": "ghcr.io/github/github-mcp-server:latest",
       "timeout_ms": 30000
     },
-    "openai": {
+    "litellm": {
       "type": "local",
-      "path": "servers/openai-server.js",
+      "path": "servers/litellm-server.js",
       "timeout_ms": 60000
     },
     "logging": {
