@@ -28,12 +28,15 @@ class LiteLLMMCPServer {
       sessions: {} // Track usage per session
     };
     
-    // Updated model pricing for 2025 (per 1K tokens)
+    // Updated model pricing for 2025 (per 1K tokens - converted from per 1M tokens)
     this.modelPricing = {
-      // OpenAI GPT-5 Series (2025)
-      'gpt-5-mini': { input: 0.30, output: 1.20 },
-      'gpt-5-pro': { input: 1.25, output: 10.00 },
-      'gpt-5-turbo': { input: 0.80, output: 4.00 },
+      // OpenAI GPT-5 Series (2025) - prices per 1K tokens
+      'gpt-5': { input: 0.00125, output: 0.01 },           // $1.25/$10.00 per 1M tokens
+      'gpt-5-mini': { input: 0.00025, output: 0.002 },     // $0.25/$2.00 per 1M tokens
+      'gpt-5-nano': { input: 0.00005, output: 0.0004 },    // $0.05/$0.40 per 1M tokens
+      'gpt-5-chat-latest': { input: 0.00125, output: 0.01 }, // $1.25/$10.00 per 1M tokens
+      'gpt-5-pro': { input: 0.00125, output: 0.01 },       // Legacy alias for gpt-5
+      'gpt-5-turbo': { input: 0.00125, output: 0.01 },     // Legacy alias for gpt-5
       
       // OpenAI GPT-4 Series (Legacy)
       'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
@@ -60,12 +63,12 @@ class LiteLLMMCPServer {
         fallback: 'gpt-5-mini'
       },
       'developer': {
-        primary: 'gpt-5-pro',            // Better for code generation
+        primary: 'gpt-5',                // Latest GPT-5 for superior code generation
         fallback: 'claude-3.5-sonnet'
       },
       'general': {
         primary: 'gpt-5-mini',           // Cost-effective general purpose
-        fallback: 'gpt-4o-mini'
+        fallback: 'gpt-5-nano'           // Even more cost-effective fallback
       }
     };
 
@@ -498,7 +501,8 @@ Read the assigned GitHub issue carefully, understand the requirements, then impl
 
     const models = {
       openai: [
-        'gpt-5-mini', 'gpt-5-pro', 'gpt-5-turbo',
+        'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5-chat-latest',
+        'gpt-5-pro', 'gpt-5-turbo',  // Legacy aliases
         'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'
       ],
       anthropic: [

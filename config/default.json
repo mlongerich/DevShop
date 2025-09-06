@@ -1,7 +1,7 @@
 {
   "models": {
     "ba": "claude-3.5-sonnet",
-    "developer": "gpt-5-pro", 
+    "developer": "gpt-5", 
     "default": "gpt-5-mini"
   },
   "llm": {
