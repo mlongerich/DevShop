@@ -11,7 +11,11 @@ DevShop is a self-improving development shop using MCP (Model Context Protocol) 
 
 ## Architecture
 - `client/devshop-mcp.js` - Main CLI orchestrator
-- `servers/` - MCP server implementations
+- `client/github-direct-client.js` - Direct GitHub MCP client
+- `client/litellm-direct-client.js` - Direct LiteLLM MCP client
+- `servers/litellm-server.js` - LiteLLM MCP server with cost tracking
+- `utils/logger.js` - Logging utility functions
+- `utils/state-manager.js` - State management utility functions
 - `prompts/` - Agent behavior definitions
 - `config/` - Configuration templates
 
@@ -37,9 +41,12 @@ npm run logs     # View session logs
 
 ## Key Files to Understand
 1. `client/devshop-mcp.js` - Main orchestrator and CLI
-2. `servers/github-server.js` - GitHub API operations
-3. `servers/openai-server.js` - OpenAI integration with cost tracking
-4. `config/default.json` - Configuration template
+2. `client/github-direct-client.js` - GitHub MCP server client
+3. `client/litellm-direct-client.js` - LiteLLM MCP server client
+4. `servers/litellm-server.js` - LiteLLM integration with cost tracking
+5. `utils/logger.js` - Logging utility functions
+6. `utils/state-manager.js` - State management utility functions
+7. `config/default.json` - Configuration template
 
 ## When Making Changes
 - Test MCP server connections after modifications

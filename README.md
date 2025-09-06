@@ -21,19 +21,21 @@ devshop/
 ├── client/
 │   ├── devshop-mcp.js          # Main CLI orchestrator
 │   ├── setup.js                # Setup wizard
-│   └── github-direct-client.js # Client library for official GitHub MCP server
+│   ├── github-direct-client.js # Direct client for GitHub MCP server
+│   └── litellm-direct-client.js # Direct client for LiteLLM MCP server
 ├── servers/
-│   ├── openai-server.js        # OpenAI MCP server with cost tracking
-│   ├── logging-server.js       # Structured logging MCP server
-│   └── state-server.js         # Session state management MCP server
+│   └── litellm-server.js       # LiteLLM MCP server with cost tracking
+├── utils/
+│   ├── logger.js               # Logging utility functions
+│   └── state-manager.js        # State management utility functions
 ├── scripts/
-│   └── start-github-server.sh # Official GitHub MCP server startup
+│   └── start-github-server.sh  # Official GitHub MCP server startup
 ├── prompts/
-│   ├── ba.txt             # Business Analyst agent prompt
-│   └── developer.txt      # Developer agent prompt
+│   ├── ba.txt                  # Business Analyst agent prompt
+│   └── developer.txt           # Developer agent prompt
 ├── config/
-│   └── default.json       # Configuration template
-└── logs/                  # Generated logs and state
+│   └── default.json            # Configuration template
+└── logs/                       # Generated logs and state
 ```
 
 ## 🚀 Quick Start
@@ -267,12 +269,13 @@ Modify agent behavior by editing prompt files:
 
 ### MCP Server Development
 
-Local MCP servers can be extended:
+Local MCP servers and utilities can be extended:
 
-- `client/github-direct-client.js` - Client library for official GitHub MCP server (read-only)
-- `servers/openai-server.js` - Add new models or providers
-- `servers/logging-server.js` - Add new log formats
-- `servers/state-server.js` - Add new state management features
+- `client/github-direct-client.js` - Direct client for GitHub MCP server (read-only)
+- `client/litellm-direct-client.js` - Direct client for LiteLLM MCP server
+- `servers/litellm-server.js` - Add new models or providers
+- `utils/logger.js` - Add new logging functionality
+- `utils/state-manager.js` - Add new state management features
 
 ### Multi-Repository Workflow
 
