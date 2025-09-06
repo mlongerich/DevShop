@@ -31,18 +31,22 @@
   },
   "mcp_servers": {
     "github": {
-      "path": "servers/github-server.js",
+      "type": "docker",
+      "image": "ghcr.io/github/github-mcp-server:latest",
       "timeout_ms": 30000
     },
     "openai": {
+      "type": "local",
       "path": "servers/openai-server.js",
       "timeout_ms": 60000
     },
     "logging": {
+      "type": "local", 
       "path": "servers/logging-server.js",
       "timeout_ms": 5000
     },
     "state": {
+      "type": "local",
       "path": "servers/state-server.js",
       "timeout_ms": 5000
     }

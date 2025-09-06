@@ -10,6 +10,7 @@ import chalk from 'chalk';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
+import GitHubDirectClient from '../servers/github-direct-client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,34 +58,76 @@ class DevShopOrchestrator {
   }
 
   async initializeMCPClients() {
-    const servers = [
-      { name: 'github', path: path.join(rootDir, 'servers', 'github-server.js') },
-      { name: 'openai', path: path.join(rootDir, 'servers', 'openai-server.js') },
-      { name: 'logging', path: path.join(rootDir, 'servers', 'logging-server.js') },
-      { name: 'state', path: path.join(rootDir, 'servers', 'state-server.js') }
-    ];
+    const serverConfigs = this.config.mcp_servers;
 
-    for (const server of servers) {
+    for (const [serverName, config] of Object.entries(serverConfigs)) {
       try {
-        const transport = new StdioClientTransport({
-          command: 'node',
-          args: [server.path]
-        });
-
-        const client = new Client(
-          { name: `devshop-${server.name}-client`, version: '1.0.0' },
-          { capabilities: {} }
-        );
-
-        await client.connect(transport);
-        this.mcpClients[server.name] = client;
-        
-        console.log(chalk.green(`✓ Connected to ${server.name} MCP server`));
+        if (serverName === 'github' && config.type === 'docker') {
+          // Use direct GitHub client
+          const githubToken = process.env.GITHUB_TOKEN || this.config.github?.token;
+          if (!githubToken) {
+            throw new Error('No GitHub token found. Set GITHUB_TOKEN environment variable.');
+          }
+          
+          const githubClient = new GitHubDirectClient(githubToken);
+          await githubClient.connect();
+          this.mcpClients[serverName] = githubClient;
+          console.log(chalk.green(`✓ Connected to ${serverName} MCP server (direct)`));
+        } else {
+          await this.connectToMCPServer(serverName, config);
+          console.log(chalk.green(`✓ Connected to ${serverName} MCP server (${config.type})`));
+        }
       } catch (error) {
-        console.error(chalk.red(`✗ Failed to connect to ${server.name} server: ${error.message}`));
+        console.error(chalk.red(`✗ Failed to connect to ${serverName} server: ${error.message}`));
+        
         throw error;
       }
     }
+  }
+
+  async connectToMCPServer(serverName, config) {
+    let transport;
+    
+    if (config.type === 'docker') {
+      // Start GitHub MCP server directly via Docker run
+      const githubToken = process.env.GITHUB_TOKEN || this.config.github?.token;
+      if (!githubToken) {
+        console.log(chalk.yellow(`  No GitHub token found, trying fallback...`));
+        if (config.fallback) {
+          return this.connectToMCPServer(serverName, config.fallback);
+        }
+        throw new Error('No GitHub token found. Set GITHUB_TOKEN environment variable.');
+      }
+      
+      transport = new StdioClientTransport({
+        command: 'docker',
+        args: [
+          'run', '--rm', '-i',
+          '-e', `GITHUB_PERSONAL_ACCESS_TOKEN=${githubToken}`,
+          config.image || 'ghcr.io/github/github-mcp-server:latest',
+          'stdio'
+        ]
+      });
+    } else if (config.type === 'local') {
+      const serverPath = config.path.startsWith('/') 
+        ? config.path 
+        : path.join(rootDir, config.path);
+      
+      transport = new StdioClientTransport({
+        command: 'node',
+        args: [serverPath]
+      });
+    } else {
+      throw new Error(`Unknown server type: ${config.type}`);
+    }
+
+    const client = new Client(
+      { name: `devshop-${serverName}-client`, version: '1.0.0' },
+      { capabilities: {} }
+    );
+
+    await client.connect(transport);
+    this.mcpClients[serverName] = client;
   }
 
   async callMCPTool(serverName, toolName, args) {
@@ -94,15 +137,22 @@ class DevShopOrchestrator {
         throw new Error(`MCP client '${serverName}' not initialized`);
       }
 
-      const result = await client.request(
-        {
-          method: 'tools/call',
-          params: {
-            name: toolName,
-            arguments: args
+      let result;
+      if (serverName === 'github' && client instanceof GitHubDirectClient) {
+        // Use direct GitHub client
+        result = await client.callTool(toolName, args);
+      } else {
+        // Use standard MCP client
+        result = await client.request(
+          {
+            method: 'tools/call',
+            params: {
+              name: toolName,
+              arguments: args
+            }
           }
-        }
-      );
+        );
+      }
 
       return result;
     } catch (error) {
@@ -411,29 +461,55 @@ class DevShopOrchestrator {
   async testConnections() {
     console.log(chalk.blue('\n🔧 Testing connections...\n'));
 
-    // Test GitHub
-    try {
-      const result = await this.callMCPTool('github', 'github_list_files', {
-        owner: 'octocat',
-        repo: 'Hello-World',
-        token: this.config.github.token
-      });
-      console.log(chalk.green('✓ GitHub connection working'));
-    } catch (error) {
-      console.log(chalk.red('✗ GitHub connection failed:', error.message));
+    // Test servers by listing available tools first
+    for (const [serverName, client] of Object.entries(this.mcpClients)) {
+      try {
+        console.log(chalk.blue(`Testing ${serverName} server...`));
+        
+        let toolsResponse;
+        if (serverName === 'github' && client instanceof GitHubDirectClient) {
+          // Use direct GitHub client
+          toolsResponse = await client.listTools();
+        } else {
+          // Use standard MCP client
+          toolsResponse = await client.request({
+            method: 'tools/list'
+          });
+        }
+        
+        if (!toolsResponse) {
+          console.log(chalk.yellow(`⚠ ${serverName} server: no response received`));
+          continue;
+        }
+        
+        const toolCount = toolsResponse.tools ? toolsResponse.tools.length : 0;
+        console.log(chalk.green(`✓ ${serverName} server: ${toolCount} tools available`));
+        
+        if (toolCount > 0 && serverName === 'github') {
+          console.log(chalk.gray(`  Available tools: ${toolsResponse.tools.slice(0, 3).map(t => t.name).join(', ')}${toolsResponse.tools.length > 3 ? '...' : ''}`));
+        }
+      } catch (error) {
+        console.log(chalk.red(`✗ ${serverName} server failed:`, error.message));
+      }
     }
 
-    // Test OpenAI
+    // Test specific functionality if we can identify the right tools
+    console.log(chalk.blue('\nTesting specific operations...'));
+    
+    // Test OpenAI if available
     try {
-      const result = await this.callMCPTool('openai', 'openai_chat_completion', {
-        messages: [{ role: 'user', content: 'Hello, just testing the connection.' }],
-        model: 'gpt-4o-mini',
-        api_key: this.config.openai.api_key,
-        max_tokens: 10
-      });
-      console.log(chalk.green('✓ OpenAI connection working'));
+      const openaiClient = this.mcpClients.openai;
+      if (openaiClient) {
+        const result = await this.callMCPTool('openai', 'openai_chat_completion', {
+          messages: [{ role: 'user', content: 'Hello, just testing the connection.' }],
+          model: 'gpt-4o-mini',
+          api_key: this.config.openai.api_key,
+          max_tokens: 10
+        });
+        console.log(chalk.green('✓ OpenAI API test successful'));
+      }
     } catch (error) {
-      console.log(chalk.red('✗ OpenAI connection failed:', error.message));
+      console.log(chalk.red('✗ OpenAI API test failed:', error.message));
     }
 
     // Test Logging
@@ -444,9 +520,9 @@ class DevShopOrchestrator {
         log_dir: path.join(rootDir, 'logs'),
         agent_role: 'test'
       });
-      console.log(chalk.green('✓ Logging server working'));
+      console.log(chalk.green('✓ Logging server test successful'));
     } catch (error) {
-      console.log(chalk.red('✗ Logging server failed:', error.message));
+      console.log(chalk.red('✗ Logging server test failed:', error.message));
     }
 
     // Test State
@@ -456,16 +532,20 @@ class DevShopOrchestrator {
         session_id: sessionId,
         state_dir: path.join(rootDir, 'logs')
       });
-      console.log(chalk.green('✓ State server working'));
+      console.log(chalk.green('✓ State server test successful'));
     } catch (error) {
-      console.log(chalk.red('✗ State server failed:', error.message));
+      console.log(chalk.red('✗ State server test failed:', error.message));
     }
   }
 
   async cleanup() {
     for (const [name, client] of Object.entries(this.mcpClients)) {
       try {
-        await client.close();
+        if (name === 'github' && client instanceof GitHubDirectClient) {
+          await client.close();
+        } else {
+          await client.close();
+        }
         console.log(chalk.gray(`Disconnected from ${name} server`));
       } catch (error) {
         console.error(chalk.red(`Error disconnecting from ${name}: ${error.message}`));

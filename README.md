@@ -22,10 +22,12 @@ devshop/
 │   ├── devshop-mcp.js      # Main CLI orchestrator
 │   └── setup.js            # Setup wizard
 ├── servers/
-│   ├── github-server.js    # GitHub operations (repos, issues, files)
-│   ├── openai-server.js    # OpenAI API with cost tracking
-│   ├── logging-server.js   # Structured logging system
-│   └── state-server.js     # Session state management
+│   ├── github-direct-client.js # Direct client for official GitHub MCP server
+│   ├── openai-server.js        # OpenAI API with cost tracking
+│   ├── logging-server.js       # Structured logging system
+│   └── state-server.js         # Session state management
+├── scripts/
+│   └── start-github-server.sh # Official GitHub MCP server startup
 ├── prompts/
 │   ├── ba.txt             # Business Analyst agent prompt
 │   └── developer.txt      # Developer agent prompt
@@ -39,6 +41,7 @@ devshop/
 ### Prerequisites
 
 - Node.js 18+ 
+- Docker (for official GitHub MCP server)
 - GitHub Personal Access Token ([create one](https://github.com/settings/personal-access-tokens/new))
 - OpenAI API Key ([get one](https://platform.openai.com/api-keys))
 
@@ -53,7 +56,12 @@ devshop/
 
 2. **Follow the setup wizard** to configure GitHub token, OpenAI key, and preferences.
 
-3. **Test your installation:**
+3. **Start the official GitHub MCP server:**
+   ```bash
+   npm run github-server
+   ```
+
+4. **Test your installation:**
    ```bash
    npm test
    ```
@@ -136,6 +144,52 @@ DevShop can improve itself! Try this workflow:
    node client/devshop-mcp.js logs --session=<session-id>
    ```
 
+## 🐙 GitHub MCP Server Integration
+
+DevShop uses the **official GitHub MCP server** (maintained by GitHub) instead of a custom implementation. This provides:
+
+- ✅ **Official GitHub support** - maintained by GitHub team
+- ✅ **Comprehensive GitHub API coverage** - more operations than custom server
+- ✅ **Regular updates** - stays current with GitHub API changes
+- ✅ **Better reliability** - tested by GitHub and community
+
+### Docker Setup (Recommended)
+
+The official GitHub MCP server runs in Docker:
+
+```bash
+# Start the server (pulls image automatically)
+npm run github-server
+
+# Stop the server
+npm run github-server:stop
+
+# View server logs
+docker logs devshop-github-server
+```
+
+### Manual Docker Setup
+
+If you prefer manual control:
+
+```bash
+# Pull the image
+docker pull ghcr.io/github/github-mcp-server:latest
+
+# Run the server
+docker run -d \
+  --name devshop-github-server \
+  -p 3000:3000 \
+  -e GITHUB_PERSONAL_ACCESS_TOKEN="$GITHUB_TOKEN" \
+  ghcr.io/github/github-mcp-server:latest
+```
+
+### Requirements
+
+- **Docker is required** for the official GitHub MCP server
+- **No fallback server** - DevShop uses only the official GitHub MCP server
+- All 90+ GitHub operations are available through the official server
+
 ## ⚙️ Configuration
 
 ### Environment Variables (.env)
@@ -213,9 +267,9 @@ Modify agent behavior by editing prompt files:
 
 ### MCP Server Development
 
-Each MCP server is independent and can be extended:
+Local MCP servers can be extended:
 
-- `servers/github-server.js` - Add new GitHub operations
+- `servers/github-direct-client.js` - Direct client for official GitHub MCP server (read-only)
 - `servers/openai-server.js` - Add new models or providers
 - `servers/logging-server.js` - Add new log formats
 - `servers/state-server.js` - Add new state management features
