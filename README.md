@@ -19,13 +19,13 @@ DevShop uses a modular MCP (Model Context Protocol) architecture:
 ```
 devshop/
 ├── client/
-│   ├── devshop-mcp.js      # Main CLI orchestrator
-│   └── setup.js            # Setup wizard
+│   ├── devshop-mcp.js          # Main CLI orchestrator
+│   ├── setup.js                # Setup wizard
+│   └── github-direct-client.js # Client library for official GitHub MCP server
 ├── servers/
-│   ├── github-direct-client.js # Direct client for official GitHub MCP server
-│   ├── openai-server.js        # OpenAI API with cost tracking
-│   ├── logging-server.js       # Structured logging system
-│   └── state-server.js         # Session state management
+│   ├── openai-server.js        # OpenAI MCP server with cost tracking
+│   ├── logging-server.js       # Structured logging MCP server
+│   └── state-server.js         # Session state management MCP server
 ├── scripts/
 │   └── start-github-server.sh # Official GitHub MCP server startup
 ├── prompts/
@@ -269,7 +269,7 @@ Modify agent behavior by editing prompt files:
 
 Local MCP servers can be extended:
 
-- `servers/github-direct-client.js` - Direct client for official GitHub MCP server (read-only)
+- `client/github-direct-client.js` - Client library for official GitHub MCP server (read-only)
 - `servers/openai-server.js` - Add new models or providers
 - `servers/logging-server.js` - Add new log formats
 - `servers/state-server.js` - Add new state management features

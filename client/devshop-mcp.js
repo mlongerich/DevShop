@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
-import GitHubDirectClient from '../servers/github-direct-client.js';
+import GitHubDirectClient from './github-direct-client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
