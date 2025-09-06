@@ -12,8 +12,8 @@ import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import GitHubDirectClient from './github-direct-client.js';
 import LiteLLMDirectClient from './litellm-direct-client.js';
-import LoggingDirectClient from './logging-direct-client.js';
-import StateDirectClient from './state-direct-client.js';
+import Logger from '../utils/logger.js';
+import StateManager from '../utils/state-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -82,18 +82,9 @@ class DevShopOrchestrator {
           await litellmClient.connect();
           this.mcpClients[serverName] = litellmClient;
           console.log(chalk.green(`✓ Connected to ${serverName} MCP server (direct)`));
-        } else if (serverName === 'logging' && config.type === 'local') {
-          // Use direct Logging client
-          const loggingClient = new LoggingDirectClient();
-          await loggingClient.connect();
-          this.mcpClients[serverName] = loggingClient;
-          console.log(chalk.green(`✓ Connected to ${serverName} MCP server (direct)`));
-        } else if (serverName === 'state' && config.type === 'local') {
-          // Use direct State client
-          const stateClient = new StateDirectClient();
-          await stateClient.connect();
-          this.mcpClients[serverName] = stateClient;
-          console.log(chalk.green(`✓ Connected to ${serverName} MCP server (direct)`));
+        } else if (serverName === 'logging' || serverName === 'state') {
+          // Skip - using direct utility modules instead of MCP servers
+          console.log(chalk.green(`✓ Using ${serverName} utility module (direct)`));
         } else {
           await this.connectToMCPServer(serverName, config);
           console.log(chalk.green(`✓ Connected to ${serverName} MCP server (${config.type})`));
@@ -165,12 +156,6 @@ class DevShopOrchestrator {
       } else if (serverName === 'litellm' && client instanceof LiteLLMDirectClient) {
         // Use direct LiteLLM client
         result = await client.callTool(toolName, args);
-      } else if (serverName === 'logging' && client instanceof LoggingDirectClient) {
-        // Use direct Logging client
-        result = await client.callTool(toolName, args);
-      } else if (serverName === 'state' && client instanceof StateDirectClient) {
-        // Use direct State client
-        result = await client.callTool(toolName, args);
       } else {
         // Use standard MCP client
         result = await client.request(
@@ -210,25 +195,18 @@ class DevShopOrchestrator {
       tokenBudget: this.config.cost_controls?.max_tokens_per_session || 10000
     };
 
-    // Create session in state server
-    await this.callMCPTool('state', 'state_create_session', {
-      session_id: sessionId,
-      state_dir: path.join(rootDir, 'logs'),
-      initial_state: {
-        agent_role: agentRole,
-        project_context: projectContext,
-        cost_budget: this.activeSession.costBudget,
-        token_budget: this.activeSession.tokenBudget
-      }
+    // Create session in state and logging
+    const stateDir = path.join(rootDir, 'logs');
+    const logDir = path.join(rootDir, 'logs');
+    
+    await StateManager.createSession(sessionId, stateDir, {
+      agent_role: agentRole,
+      project_context: projectContext,
+      cost_budget: this.activeSession.costBudget,
+      token_budget: this.activeSession.tokenBudget
     });
 
-    // Create session in logging server
-    await this.callMCPTool('logging', 'logging_create_session', {
-      session_id: sessionId,
-      log_dir: path.join(rootDir, 'logs'),
-      agent_role: agentRole,
-      project_context: projectContext
-    });
+    await Logger.createSession(sessionId, logDir, agentRole, projectContext);
 
     console.log(chalk.blue(`🚀 Started session ${sessionId} with ${agentRole} agent`));
     return sessionId;
@@ -237,27 +215,36 @@ class DevShopOrchestrator {
   async logInteraction(type, content, metadata = {}) {
     if (!this.activeSession) return;
 
-    await this.callMCPTool('logging', 'logging_log_interaction', {
-      session_id: this.activeSession.id,
-      log_dir: path.join(rootDir, 'logs'),
-      interaction_type: type,
-      content: content,
-      agent_role: this.activeSession.agentRole,
+    const logDir = path.join(rootDir, 'logs');
+    await Logger.logInteraction(
+      this.activeSession.id, 
+      logDir, 
+      type, 
+      content, 
+      this.activeSession.agentRole, 
       metadata
-    });
+    );
   }
 
   async logError(error, context = {}) {
     if (!this.activeSession) return;
 
-    await this.callMCPTool('logging', 'logging_log_interaction', {
-      session_id: this.activeSession.id,
-      log_dir: path.join(rootDir, 'logs'),
-      interaction_type: 'error',
-      content: error.message,
-      agent_role: this.activeSession.agentRole,
-      metadata: { context, stack: error.stack }
-    });
+    const logDir = path.join(rootDir, 'logs');
+    await Logger.logInteraction(
+      this.activeSession.id, 
+      logDir, 
+      'error', 
+      error.message, 
+      this.activeSession.agentRole, 
+      { context, stack: error.stack }
+    );
+  }
+
+  getProviderFromModel(model) {
+    if (model.includes('gpt') || model.includes('o1')) return 'openai';
+    if (model.includes('claude')) return 'anthropic';
+    if (model.includes('gemini')) return 'google';
+    return 'unknown';
   }
 
   async checkLimits() {
@@ -334,15 +321,15 @@ class DevShopOrchestrator {
       await this.logInteraction('agent_response', response.content);
       
       // Log cost
-      await this.callMCPTool('logging', 'logging_log_cost', {
-        session_id: sessionId,
-        log_dir: path.join(rootDir, 'logs'),
-        model: response.usage.model,
-        tokens_used: response.usage.total_tokens,
-        cost: response.usage.cost,
-        agent_role: 'ba',
-        operation: 'requirements_analysis'
-      });
+      const logDir = path.join(rootDir, 'logs');
+      await Logger.logCost(
+        sessionId,
+        logDir,
+        response.usage.model,
+        response.usage.total_tokens,
+        response.usage.cost,
+        this.getProviderFromModel(response.usage.model)
+      );
 
       console.log(chalk.green('\n📋 BA Agent Response:'));
       console.log(response.content);
@@ -441,15 +428,15 @@ class DevShopOrchestrator {
       await this.logInteraction('agent_response', response.content);
 
       // Log cost
-      await this.callMCPTool('logging', 'logging_log_cost', {
-        session_id: sessionId,
-        log_dir: path.join(rootDir, 'logs'),
-        model: response.usage.model,
-        tokens_used: response.usage.total_tokens,
-        cost: response.usage.cost,
-        agent_role: 'developer',
-        operation: 'code_implementation'
-      });
+      const logDir = path.join(rootDir, 'logs');
+      await Logger.logCost(
+        sessionId,
+        logDir,
+        response.usage.model,
+        response.usage.total_tokens,
+        response.usage.cost,
+        this.getProviderFromModel(response.usage.model)
+      );
 
       console.log(chalk.green('\n🔨 Developer Agent Response:'));
       console.log(response.content);
@@ -469,21 +456,18 @@ class DevShopOrchestrator {
 
   async showLogs(sessionId) {
     try {
+      const logDir = path.join(rootDir, 'logs');
+      
       if (sessionId) {
-        const logs = await this.callMCPTool('logging', 'logging_get_session_logs', {
-          session_id: sessionId,
-          log_dir: path.join(rootDir, 'logs')
-        });
+        const logs = await Logger.getSessionLogs(sessionId, logDir);
 
         console.log(chalk.cyan(`\n📋 Logs for session ${sessionId}:`));
-        console.log(JSON.parse(logs.content[0].text));
+        console.log(logs);
       } else {
-        const sessions = await this.callMCPTool('logging', 'logging_list_sessions', {
-          log_dir: path.join(rootDir, 'logs')
-        });
+        const sessions = await Logger.listSessions(logDir);
 
         console.log(chalk.cyan('\n📋 Available sessions:'));
-        console.log(JSON.parse(sessions.content[0].text));
+        console.log(sessions);
       }
     } catch (error) {
       console.error(chalk.red(`❌ Failed to retrieve logs: ${error.message}`));
@@ -505,12 +489,10 @@ class DevShopOrchestrator {
         } else if (serverName === 'litellm' && client instanceof LiteLLMDirectClient) {
           // Use direct LiteLLM client
           toolsResponse = await client.listTools();
-        } else if (serverName === 'logging' && client instanceof LoggingDirectClient) {
-          // Use direct Logging client
-          toolsResponse = await client.listTools();
-        } else if (serverName === 'state' && client instanceof StateDirectClient) {
-          // Use direct State client
-          toolsResponse = await client.listTools();
+        } else if (serverName === 'logging' || serverName === 'state') {
+          // Skip tool listing - using utility modules
+          console.log(chalk.green(`✓ ${serverName} utility module: Available`));
+          continue;
         } else {
           // Use standard MCP client
           toolsResponse = await client.request({
@@ -557,24 +539,19 @@ class DevShopOrchestrator {
     // Test Logging
     try {
       const sessionId = uuidv4();
-      await this.callMCPTool('logging', 'logging_create_session', {
-        session_id: sessionId,
-        log_dir: path.join(rootDir, 'logs'),
-        agent_role: 'test'
-      });
-      console.log(chalk.green('✓ Logging server test successful'));
+      const logDir = path.join(rootDir, 'logs');
+      await Logger.createSession(sessionId, logDir, 'test');
+      console.log(chalk.green('✓ Logging utility test successful'));
     } catch (error) {
-      console.log(chalk.red('✗ Logging server test failed:', error.message));
+      console.log(chalk.red('✗ Logging utility test failed:', error.message));
     }
 
     // Test State
     try {
       const sessionId = uuidv4();
-      await this.callMCPTool('state', 'state_create_session', {
-        session_id: sessionId,
-        state_dir: path.join(rootDir, 'logs')
-      });
-      console.log(chalk.green('✓ State server test successful'));
+      const stateDir = path.join(rootDir, 'logs');
+      await StateManager.createSession(sessionId, stateDir);
+      console.log(chalk.green('✓ State utility test successful'));
     } catch (error) {
       console.log(chalk.red('✗ State server test failed:', error.message));
     }

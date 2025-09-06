@@ -44,16 +44,6 @@
       "type": "local",
       "path": "servers/litellm-server.js",
       "timeout_ms": 60000
-    },
-    "logging": {
-      "type": "local", 
-      "path": "servers/logging-server.js",
-      "timeout_ms": 5000
-    },
-    "state": {
-      "type": "local",
-      "path": "servers/state-server.js",
-      "timeout_ms": 5000
     }
   },
   "directories": {
