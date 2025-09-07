@@ -1,8 +1,8 @@
-# DevShop 🚀
+# DevShop 2.0 🚀
 
 **Self-improving development shop using MCP (Model Context Protocol) and AI agents**
 
-DevShop is a weekend MVP implementation that creates a development environment where AI agents can analyze requirements, generate code, and continuously improve themselves. It uses a modular MCP architecture with specialized agents for different development tasks.
+DevShop 2.0 is a completely refactored implementation featuring modern service architecture with design patterns. AI agents can analyze requirements, generate code, and continuously improve themselves using a clean, maintainable codebase built with Strategy, Factory, Command, and Decorator patterns.
 
 ## 🎯 What Does DevShop Do?
 
@@ -11,32 +11,82 @@ DevShop is a weekend MVP implementation that creates a development environment w
 - **Self-Improvement**: Can work on its own codebase to add new capabilities
 - **Full Observability**: Logs all agent interactions, costs, and decisions
 - **Cost Controls**: Built-in budgets and limits to prevent runaway spending
+- **Modern Architecture**: Clean service layer with proper separation of concerns
 
-## 🏗️ Architecture
+## 🏗️ Architecture (v2.0)
 
-DevShop uses a modular MCP (Model Context Protocol) architecture:
+DevShop 2.0 uses a modern service-oriented architecture with design patterns:
 
 ```
 devshop/
 ├── client/
-│   ├── devshop-mcp.js          # Main CLI orchestrator
-│   ├── setup.js                # Setup wizard
-│   ├── github-direct-client.js # Direct client for GitHub MCP server
-│   └── litellm-direct-client.js # Direct client for LiteLLM MCP server
+│   ├── devshop-mcp.js              # Main CLI orchestrator (v2.0)
+│   ├── services/                   # Service Layer
+│   │   ├── config-service.js       # Configuration management
+│   │   ├── session-service.js      # Session lifecycle management
+│   │   ├── mcp-client-manager.js   # MCP client factory & management
+│   │   └── test-service.js         # System testing & validation
+│   ├── commands/                   # Command Pattern Implementation
+│   │   ├── base-command.js         # Abstract base command
+│   │   ├── ba-command.js           # Business analyst workflow
+│   │   ├── dev-command.js          # Developer workflow
+│   │   ├── test-command.js         # System testing
+│   │   ├── logs-command.js         # Log management
+│   │   └── setup-command.js        # Initial setup
+│   ├── agents/                     # Agent Abstraction Layer
+│   │   ├── base-agent.js           # Abstract base agent
+│   │   ├── ba-agent.js             # Business analyst agent
+│   │   └── developer-agent.js      # Developer agent
+│   ├── clients/                    # Direct MCP Clients
+│   │   ├── github-direct-client.js # GitHub MCP integration
+│   │   └── litellm-direct-client.js # LiteLLM MCP integration
+│   └── setup.js                    # Legacy setup (maintained for compatibility)
 ├── servers/
-│   └── litellm-server.js       # LiteLLM MCP server with cost tracking
+│   ├── litellm-server.js           # Main LiteLLM server (refactored)
+│   ├── providers/                  # Strategy Pattern for LLM Providers
+│   │   ├── base-provider.js        # Abstract provider interface
+│   │   ├── openai-provider.js      # OpenAI implementation
+│   │   ├── anthropic-provider.js   # Anthropic Claude implementation
+│   │   ├── google-provider.js      # Google Gemini implementation
+│   │   ├── provider-factory.js     # Factory pattern for providers
+│   │   └── provider-manager.js     # Provider lifecycle management
+│   ├── commands/                   # Command Pattern for Server Operations
+│   │   ├── chat-completion-command.js # LLM chat completions
+│   │   ├── usage-command.js        # Usage tracking
+│   │   └── limits-command.js       # Budget limit checks
+│   ├── decorators/                 # Decorator Pattern
+│   │   └── usage-tracking-decorator.js # Usage tracking decorator
+│   └── config/                     # Configuration Management
+│       └── model-pricing-config.js # Centralized pricing data
 ├── utils/
-│   ├── logger.js               # Logging utility functions
-│   └── state-manager.js        # State management utility functions
+│   ├── logger.js                   # Logging utility functions
+│   └── state-manager.js            # State management utility functions
 ├── scripts/
-│   └── start-github-server.sh  # Official GitHub MCP server startup
+│   └── start-github-server.sh      # Official GitHub MCP server startup
 ├── prompts/
-│   ├── ba.txt                  # Business Analyst agent prompt
-│   └── developer.txt           # Developer agent prompt
+│   ├── ba.txt                      # Business Analyst agent prompt
+│   └── developer.txt               # Developer agent prompt
 ├── config/
-│   └── default.json            # Configuration template
-└── logs/                       # Generated logs and state
+│   └── default.json                # Configuration template
+└── logs/                           # Generated logs and state
 ```
+
+### 🎨 Design Patterns Used
+
+- **Strategy Pattern**: Pluggable LLM providers (OpenAI, Anthropic, Google)
+- **Factory Pattern**: Provider creation and MCP client instantiation
+- **Command Pattern**: CLI operations and server tool execution
+- **Decorator Pattern**: Usage tracking and cost monitoring
+- **Abstract Base Classes**: Consistent interfaces for agents and commands
+- **Dependency Injection**: Clean service composition throughout
+
+### 🔄 Architecture Benefits
+
+- **Maintainability**: Reduced main orchestrator from 724 to ~200 lines
+- **Testability**: Each component can be tested in isolation
+- **Extensibility**: Easy to add new commands, agents, or providers  
+- **Modularity**: Clean separation of concerns across layers
+- **Reliability**: Comprehensive error handling and logging
 
 ## 🚀 Quick Start
 
@@ -68,6 +118,11 @@ devshop/
    npm test
    ```
 
+5. **Check system status:**
+   ```bash
+   npm run status
+   ```
+
 ### First Run
 
 1. **Try the BA Agent** (creates requirements and GitHub issues):
@@ -93,13 +148,22 @@ The BA Agent analyzes your requests and creates detailed requirements:
 
 ```bash
 # Analyze a feature request
-node client/devshop-mcp.js ba --repo=myorg/myapp "Add real-time notifications"
+npm run ba -- --repo=myorg/myapp "Add real-time notifications"
 
-# Create requirements for a bug fix
-node client/devshop-mcp.js ba --repo=myorg/myapp "Fix memory leak in background processing"
+# Create requirements for a bug fix  
+npm run ba -- --repo=myorg/myapp "Fix memory leak in background processing"
 
 # Analyze existing codebase for improvements
-node client/devshop-mcp.js ba --repo=myorg/myapp "Optimize database queries for better performance"
+npm run ba -- --repo=myorg/myapp "Optimize database queries for better performance"
+```
+
+**New v2.0 Options:**
+```bash
+# Resume an existing session
+npm run ba -- --repo=myorg/myapp --session=abc-123-def "Continue analysis"
+
+# Verbose output with detailed information
+npm run ba -- --repo=myorg/myapp --verbose "Add user dashboard"
 ```
 
 The BA Agent will:
@@ -114,10 +178,16 @@ The Developer Agent reads GitHub issues and implements the features:
 
 ```bash
 # Implement a specific issue
-node client/devshop-mcp.js dev --repo=myorg/myapp --issue=42
+npm run dev -- --repo=myorg/myapp --issue=42
 
-# Work on a bug fix
-node client/devshop-mcp.js dev --repo=myorg/myapp --issue=15
+# Work on a feature branch
+npm run dev -- --repo=myorg/myapp --issue=15 --branch=feature/user-auth
+
+# Dry run mode (analyze without making changes)
+npm run dev -- --repo=myorg/myapp --issue=42 --dry-run
+
+# Resume existing development session
+npm run dev -- --repo=myorg/myapp --session=def-456-ghi --verbose
 ```
 
 The Developer Agent will:
@@ -127,33 +197,59 @@ The Developer Agent will:
 - Create/update necessary files
 - Commit changes with descriptive messages
 
+### System Management
+
+```bash
+# Check overall system health
+npm run status
+
+# Run comprehensive system tests
+npm run test --full
+
+# Test only connections
+npm run test --connections
+
+# Test only API integrations
+npm run test --apis
+
+# View all sessions
+npm run logs --list
+
+# View specific session with detailed output
+npm run logs --session=abc-123 --verbose
+
+# Export session logs
+npm run logs --session=abc-123 --export
+```
+
 ### Self-Improvement Workflow
 
-DevShop can improve itself! Try this workflow:
+DevShop 2.0 can improve itself with the new architecture:
 
 1. **Create improvement requirements:**
    ```bash
-   node client/devshop-mcp.js ba --repo=your-org/devshop "Add web dashboard for monitoring agent sessions"
+   npm run ba -- --repo=your-org/devshop "Add web dashboard for monitoring agent sessions"
    ```
 
 2. **Let DevShop implement its own improvement:**
    ```bash
-   node client/devshop-mcp.js dev --repo=your-org/devshop --issue=1
+   npm run dev -- --repo=your-org/devshop --issue=1
    ```
 
 3. **Review and iterate:**
    ```bash
-   node client/devshop-mcp.js logs --session=<session-id>
+   npm run logs --session=<session-id> --verbose
+   npm run status
    ```
 
 ## 🐙 GitHub MCP Server Integration
 
-DevShop uses the **official GitHub MCP server** (maintained by GitHub) instead of a custom implementation. This provides:
+DevShop uses the **official GitHub MCP server** (maintained by GitHub) with our refactored client architecture:
 
 - ✅ **Official GitHub support** - maintained by GitHub team
-- ✅ **Comprehensive GitHub API coverage** - more operations than custom server
-- ✅ **Regular updates** - stays current with GitHub API changes
-- ✅ **Better reliability** - tested by GitHub and community
+- ✅ **Comprehensive GitHub API coverage** - 90+ operations
+- ✅ **Refactored integration** - clean client wrapper with error handling
+- ✅ **Better reliability** - tested architecture with proper separation
 
 ### Docker Setup (Recommended)
 
@@ -186,12 +282,6 @@ docker run -d \
   ghcr.io/github/github-mcp-server:latest
 ```
 
-### Requirements
-
-- **Docker is required** for the official GitHub MCP server
-- **No fallback server** - DevShop uses only the official GitHub MCP server
-- All 90+ GitHub operations are available through the official server
-
 ## ⚙️ Configuration
 
 ### Environment Variables (.env)
@@ -201,10 +291,12 @@ docker run -d \
 GITHUB_TOKEN=ghp_your_token_here
 OPENAI_API_KEY=sk-your_key_here
 
-# Optional
+# Optional - Multi-Provider Support
+ANTHROPIC_API_KEY=sk-ant-your_key_here
+GOOGLE_API_KEY=AIza_your_key_here
+
+# Optional - Defaults
 GITHUB_ORG=your-default-org
-OPENAI_BA_MODEL=gpt-5-nano
-OPENAI_DEV_MODEL=gpt-5-nano
 MAX_COST_PER_SESSION=5.00
 MAX_TOKENS_PER_SESSION=10000
 ```
@@ -214,8 +306,18 @@ MAX_TOKENS_PER_SESSION=10000
 ```json
 {
   "models": {
-    "ba": "gpt-5-nano",
-    "developer": "gpt-5-nano"
+    "ba": "claude-3.5-sonnet",
+    "developer": "gpt-5"
+  },
+  "mcp_servers": {
+    "github": {
+      "type": "docker",
+      "enabled": true
+    },
+    "litellm": {
+      "type": "local", 
+      "enabled": true
+    }
   },
   "cost_controls": {
     "max_tokens_per_session": 10000,
@@ -224,41 +326,95 @@ MAX_TOKENS_PER_SESSION=10000
 }
 ```
 
-## 📊 Cost Tracking
+## 📊 Cost Tracking & Multi-Provider Support
 
-DevShop includes built-in cost controls:
+DevShop 2.0 includes enhanced cost controls with multi-provider support:
 
-- **Token Limits**: Prevent excessive token usage
-- **Cost Budgets**: Set maximum spend per session
-- **Usage Tracking**: Monitor costs across all agents
-- **Automatic Cutoffs**: Stop execution when limits are reached
+- **Multi-Provider LLM Support**: OpenAI, Anthropic, Google
+- **Smart Model Selection**: Optimal model for each agent type
+- **Enhanced Cost Tracking**: Per-session and per-agent monitoring
+- **Budget Controls**: Automatic cutoffs when limits are reached
+- **Usage Analytics**: Detailed cost breakdowns
 
-View current usage:
+**Provider Configuration:**
 ```bash
-node client/devshop-mcp.js logs --session=<session-id>
+# OpenAI (default)
+export OPENAI_API_KEY=sk-...
+
+# Anthropic Claude (recommended for BA Agent)
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# Google Gemini (cost-effective option)
+export GOOGLE_API_KEY=AIza...
 ```
 
-## 🔍 Logging and Observability
+**Monitor Usage:**
+```bash
+# Check current usage
+npm run logs --session=<session-id>
 
-Every agent interaction is logged for analysis:
+# System status with cost info  
+npm run status
 
-- **Interaction Logs**: All agent conversations
-- **Tool Usage**: MCP tool calls and results
-- **Cost Tracking**: Token usage and costs
-- **Session Summaries**: High-level session overview
+# Detailed system health check
+npm run test --full --verbose
+```
+
+## 🔍 Logging and Observability (Enhanced)
+
+Every agent interaction is logged with comprehensive observability:
+
+- **Structured Logging**: JSON-formatted logs with metadata
+- **Session Management**: Complete session lifecycle tracking
+- **Cost Analytics**: Token usage and costs per interaction
+- **Error Tracking**: Comprehensive error logging and context
+- **Performance Metrics**: Response times and system health
 
 ```bash
-# List all sessions
-npm run logs
+# List all sessions with status
+npm run logs --list
 
-# View specific session
-npm run logs -- --session=abc-123-def
+# View specific session with full detail
+npm run logs --session=abc-123-def --verbose
 
-# Monitor real-time (coming soon!)
-npm run monitor
+# Filter logs by type
+npm run logs --session=abc-123-def --filter=error
+
+# Export session for analysis
+npm run logs --session=abc-123-def --export
+
+# Show only recent activity
+npm run logs --limit=50
 ```
 
 ## 🛠️ Advanced Usage
+
+### Adding New Commands
+
+With the new Command pattern, adding commands is straightforward:
+
+1. Create new command class extending `BaseCommand`
+2. Implement `execute()` method
+3. Add to orchestrator command registry
+4. Update package.json scripts
+
+### Adding New Agents
+
+The Agent abstraction makes it easy to add specialized agents:
+
+1. Create new agent class extending `BaseAgent`  
+2. Implement agent-specific `execute()` logic
+3. Create corresponding command class
+4. Configure agent-specific prompts
+
+### Adding New LLM Providers
+
+The Strategy pattern makes provider extension simple:
+
+1. Create new provider class extending `BaseProvider`
+2. Implement provider-specific API calls
+3. Add to `ProviderFactory`
+4. Update configuration schema
 
 ### Custom Agent Prompts
 
@@ -267,29 +423,19 @@ Modify agent behavior by editing prompt files:
 - `prompts/ba.txt` - Business Analyst behavior
 - `prompts/developer.txt` - Developer behavior
 
-### MCP Server Development
-
-Local MCP servers and utilities can be extended:
-
-- `client/github-direct-client.js` - Direct client for GitHub MCP server (read-only)
-- `client/litellm-direct-client.js` - Direct client for LiteLLM MCP server
-- `servers/litellm-server.js` - Add new models or providers
-- `utils/logger.js` - Add new logging functionality
-- `utils/state-manager.js` - Add new state management features
-
 ### Multi-Repository Workflow
 
-DevShop can work across multiple repositories:
+DevShop 2.0 supports enhanced multi-repository operations:
 
 ```bash
-# Analyze one repo
+# Analyze multiple repositories
 npm run ba -- --repo=org/frontend "Add user dashboard"
+npm run ba -- --repo=org/backend "Add user API endpoints"  
+npm run ba -- --repo=org/mobile "Add mobile user interface"
 
-# Implement in another repo
-npm run ba -- --repo=org/backend "Add user API endpoints"
-
-# Cross-repository coordination (advanced)
-npm run ba -- --repo=org/frontend "Integrate with user API from backend repo"
+# Coordinate cross-repository development
+npm run dev -- --repo=org/frontend --issue=1 --verbose
+npm run dev -- --repo=org/backend --issue=2 --verbose
 ```
 
 ## 🐛 Troubleshooting
@@ -297,61 +443,116 @@ npm run ba -- --repo=org/frontend "Integrate with user API from backend repo"
 ### Common Issues
 
 **"MCP server connection failed"**
-- Check that all MCP servers are executable: `chmod +x servers/*.js`
-- Ensure Node.js modules are installed: `npm install`
+- Check system status: `npm run status`
+- Test connections: `npm test --connections`
+- Verify Docker is running for GitHub server
 
 **"GitHub token invalid"**
 - Verify token has `repo`, `issues`, and `pull_requests` permissions
-- Check token isn't expired
+- Check token hasn't expired: `npm run test --apis`
 
-**"OpenAI API error"**
-- Verify API key is correct and has credits
+**"OpenAI/Anthropic/Google API error"**
+- Verify API keys are correct: `npm run status`
 - Check rate limits haven't been exceeded
+- Test specific provider: `npm run test --apis --verbose`
 
 **"Cost limits exceeded"**
-- Review budget settings in config/default.json
-- Check current usage: `npm run logs`
+- Review budget settings: `npm run status`
+- Check current usage: `npm run logs --errors`
+- Adjust limits in config/default.json
 
 ### Debug Mode
 
-Enable verbose logging:
+Enable comprehensive debugging:
 ```bash
-DEBUG=1 node client/devshop-mcp.js ba --repo=org/repo "feature description"
+# Debug specific command
+DEBUG=1 npm run ba -- --repo=org/repo --verbose "feature description"
+
+# Debug with connection testing
+DEBUG=1 npm run test --full --verbose
+
+# Check detailed system status
+npm run status --verbose
 ```
 
 ### Reset Session State
 
-Clear stuck sessions:
+Clear problematic sessions:
 ```bash
+# Remove all session state
 rm -rf logs/*.state.json
-rm -rf logs/session-*.json
+
+# Remove specific session logs
+rm -rf logs/session-<session-id>*.json
+
+# Clean start
+npm run setup --force
 ```
 
-## 📈 Roadmap
+## 📈 Roadmap (v2.x)
 
-DevShop is designed to bootstrap itself. Planned improvements:
+DevShop 2.0's clean architecture enables rapid feature development:
 
-- [ ] **Web Dashboard**: Real-time monitoring and control
+### Immediate (v2.1)
+- [ ] **Enhanced Web Dashboard**: Real-time monitoring with React
+- [ ] **Advanced Cost Analytics**: Detailed usage breakdowns
+- [ ] **Session Management UI**: Visual session browser
+
+### Near-term (v2.2-2.3)
 - [ ] **Multi-Agent Coordination**: Agents that work together
-- [ ] **Code Review Agent**: Automated code quality checks
-- [ ] **Testing Agent**: Automated test generation
-- [ ] **Documentation Agent**: Auto-generated docs
-- [ ] **Performance Agent**: Code optimization
-- [ ] **Security Agent**: Security analysis and fixes
+- [ ] **Code Review Agent**: Automated code quality analysis
+- [ ] **Testing Agent**: Automated test generation and execution
+- [ ] **Performance Agent**: Code optimization recommendations
+
+### Medium-term (v2.4-2.5)
+- [ ] **Documentation Agent**: Auto-generated comprehensive docs
+- [ ] **Security Agent**: Security analysis and vulnerability fixes
+- [ ] **Deployment Agent**: Automated deployment and rollback
+- [ ] **Monitoring Agent**: Production system monitoring
+
+### Architecture Evolution
+- [ ] **Plugin System**: Third-party agent and provider plugins
+- [ ] **Distributed Agents**: Multi-machine agent coordination
+- [ ] **Advanced Observability**: APM integration and metrics
+- [ ] **ML-Enhanced Decisions**: Learning from past sessions
 
 ## 🤝 Contributing
 
-DevShop improves itself! The best way to contribute:
+DevShop 2.0's architecture makes contributions much easier:
 
+### For Developers
 1. **Use DevShop to improve DevShop:**
    ```bash
    npm run ba -- --repo=your-org/devshop "Add feature X"
    npm run dev -- --repo=your-org/devshop --issue=N
    ```
 
-2. **Submit issues for new capabilities**
-3. **Review and test agent-generated code**
-4. **Improve agent prompts and configuration**
+2. **Architecture Guidelines:**
+   - Follow existing design patterns (Strategy, Command, etc.)
+   - Maintain clean separation of concerns
+   - Add comprehensive tests for new components
+   - Update documentation for API changes
+
+3. **Adding New Components:**
+   - Services: Add to `/client/services/`
+   - Commands: Add to `/client/commands/`
+   - Agents: Add to `/client/agents/`
+   - Providers: Add to `/servers/providers/`
+
+### For Users
+1. **Submit enhancement requests** as GitHub issues
+2. **Test agent-generated code** and provide feedback
+3. **Share usage patterns** and configuration optimizations
+4. **Contribute prompt improvements** for better agent behavior
+
+## 🔄 Migration from v1.x
+
+Upgrading from DevShop 1.x to 2.0:
+
+1. **Automatic Migration**: Existing configs and logs are compatible
+2. **New Commands**: Use new CLI structure (`npm run status`, enhanced options)
+3. **Enhanced Features**: Leverage new multi-provider support and better logging
+4. **Performance**: Experience significantly improved reliability and speed
 
 ## 📄 License
 
@@ -360,10 +561,13 @@ MIT License - see LICENSE file for details.
 ## 🙏 Acknowledgments
 
 - Built with [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
-- Uses OpenAI GPT models for agent intelligence
+- Multi-provider LLM support (OpenAI, Anthropic, Google)
 - GitHub API for repository operations
-- Inspired by the vision of self-improving development tools
+- Inspired by modern software architecture patterns
+- Community feedback driving continuous improvement
 
 ---
 
-**Ready to let AI agents improve your development workflow? Start with `npm run setup` and let DevShop build itself!**
+**Ready to experience AI agents with clean architecture? Start with `npm run setup` and let DevShop 2.0 build itself!**
+
+*DevShop 2.0 - Where AI meets software engineering best practices* ✨

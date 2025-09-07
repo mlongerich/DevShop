@@ -1,16 +1,17 @@
 {
   "name": "devshop",
-  "version": "1.0.0",
-  "description": "Self-improving development shop using MCP and AI agents",
+  "version": "2.0.0",
+  "description": "Self-improving development shop using MCP and AI agents with modern service architecture",
   "main": "client/devshop-mcp.js",
   "type": "module",
   "scripts": {
     "start": "node client/devshop-mcp.js",
-    "setup": "node client/setup.js",
+    "setup": "node client/devshop-mcp.js setup",
     "test": "node client/devshop-mcp.js test",
     "ba": "node client/devshop-mcp.js ba",
     "dev": "node client/devshop-mcp.js dev",
     "logs": "node client/devshop-mcp.js logs",
+    "status": "node client/devshop-mcp.js status",
     "github-server": "bash scripts/start-github-server.sh",
     "github-server:stop": "docker stop devshop-github-server 2>/dev/null || true"
   },
