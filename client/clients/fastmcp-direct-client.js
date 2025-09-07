@@ -345,6 +345,11 @@ class FastMCPDirectClient extends EventEmitter {
     this.connected = false;
     this.rejectAllPendingRequests(new Error('Client disconnected'));
   }
+
+  // MCP Client Manager compatibility - alias for disconnect()
+  async close() {
+    await this.disconnect();
+  }
 }
 
 export { FastMCPDirectClient };
