@@ -7,8 +7,8 @@
    - Updated 2025 model pricing for GPT-5, Claude 3.5, Gemini 2.5
    - Agent-specific model preferences:
      - BA Agent: `claude-3.5-sonnet` (better for analysis)
-     - Developer Agent: `gpt-5-pro` (better for code generation)
-     - General: `gpt-5-mini` (cost-effective)
+     - Developer Agent: `gpt-5` (better for code generation)
+     - General: `gpt-5-nano` (cost-effective)
    - Enhanced cost tracking per session
    - Model auto-selection based on agent role
 
@@ -17,10 +17,10 @@
    - Modified model preferences for optimal agent performance
    - Added LiteLLM proxy configuration options
 
-3. **Client Integration**: 
+3. **Client Integration**:
    - Updated `client/devshop-mcp.js` to use LiteLLM tools:
      - `llm_chat_completion` (replaces `openai_chat_completion`)
-     - `llm_get_usage` (replaces `openai_get_usage`)  
+     - `llm_get_usage` (replaces `openai_get_usage`)
      - `llm_check_limits` (replaces `openai_check_limits`)
      - `llm_create_agent_prompt` (replaces `openai_create_agent_prompt`)
      - `llm_list_models` (new tool)
@@ -28,7 +28,6 @@
 4. **Environment Configuration**:
    - Updated `.env` with corrected model names
    - Added placeholders for additional provider API keys
-   - Fixed `gpt-5-nano` → `gpt-5-mini` naming
 
 ## 🚧 Current Issue - Option 2 FAILED
 
@@ -39,7 +38,7 @@ Cannot read properties of undefined (reading 'parse')
 
 **SDK Version Testing Results:**
 - ❌ **1.17.5** (current): Parsing bug present
-- ❌ **1.15.1**: Same parsing bug  
+- ❌ **1.15.1**: Same parsing bug
 - ❌ **1.14.0**: Same parsing bug
 - ❌ **1.12.0**: Same parsing bug
 
@@ -68,12 +67,12 @@ This affects ALL local Node.js MCP servers (LiteLLM, logging, state) but NOT the
 ```bash
 npm test
 ✓ Connected to github MCP server (direct)
-✓ Connected to litellm MCP server (direct)  
+✓ Connected to litellm MCP server (direct)
 ✓ Connected to logging MCP server (direct)
 ✓ Connected to state MCP server (direct)
 
 ✓ OpenAI API test successful
-✓ Logging server test successful  
+✓ Logging server test successful
 ✓ State server test successful
 ```
 
@@ -95,8 +94,8 @@ Expected behavior:
 
 Current optimized model assignment:
 - **BA Agent**: `claude-3.5-sonnet` - Superior analysis and requirements gathering
-- **Developer Agent**: `gpt-5-pro` - Advanced code generation capabilities  
-- **General**: `gpt-5-mini` - Cost-effective for basic operations
+- **Developer Agent**: `gpt-5` - Advanced code generation capabilities
+- **General**: `gpt-5-nano` - Cost-effective for basic operations
 
 ## 💰 Cost Benefits
 
@@ -114,7 +113,7 @@ export OPENAI_API_KEY=sk-...
 ```
 
 ### Anthropic (Claude)
-```bash 
+```bash
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 

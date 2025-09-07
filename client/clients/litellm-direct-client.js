@@ -25,7 +25,7 @@ class LiteLLMDirectClient extends EventEmitter {
       throw new Error('Already connected');
     }
 
-    const serverPath = path.join(__dirname, '..', 'servers', 'litellm-server.js');
+    const serverPath = path.join(__dirname, '..', '..', 'servers', 'litellm-server.js');
     
     this.process = spawn('node', [serverPath], {
       stdio: ['pipe', 'pipe', 'pipe']

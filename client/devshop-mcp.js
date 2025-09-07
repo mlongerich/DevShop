@@ -35,7 +35,7 @@ class DevShopOrchestrator {
       const configPath = path.join(rootDir, 'config', 'default.json');
       const configContent = await fs.readFile(configPath, 'utf8');
       this.config = JSON.parse(configContent);
-      
+
       // Resolve environment variables
       this.config = this.resolveEnvVars(this.config);
       return this.config;
@@ -71,7 +71,7 @@ class DevShopOrchestrator {
           if (!githubToken) {
             throw new Error('No GitHub token found. Set GITHUB_TOKEN environment variable.');
           }
-          
+
           const githubClient = new GitHubDirectClient(githubToken);
           await githubClient.connect();
           this.mcpClients[serverName] = githubClient;
@@ -91,7 +91,7 @@ class DevShopOrchestrator {
         }
       } catch (error) {
         console.error(chalk.red(`✗ Failed to connect to ${serverName} server: ${error.message}`));
-        
+
         throw error;
       }
     }
@@ -99,7 +99,7 @@ class DevShopOrchestrator {
 
   async connectToMCPServer(serverName, config) {
     let transport;
-    
+
     if (config.type === 'docker') {
       // Start GitHub MCP server directly via Docker run
       const githubToken = process.env.GITHUB_TOKEN || this.config.github?.token;
@@ -110,7 +110,7 @@ class DevShopOrchestrator {
         }
         throw new Error('No GitHub token found. Set GITHUB_TOKEN environment variable.');
       }
-      
+
       transport = new StdioClientTransport({
         command: 'docker',
         args: [
@@ -121,10 +121,10 @@ class DevShopOrchestrator {
         ]
       });
     } else if (config.type === 'local') {
-      const serverPath = config.path.startsWith('/') 
-        ? config.path 
+      const serverPath = config.path.startsWith('/')
+        ? config.path
         : path.join(rootDir, config.path);
-      
+
       transport = new StdioClientTransport({
         command: 'node',
         args: [serverPath]
@@ -173,11 +173,11 @@ class DevShopOrchestrator {
     } catch (error) {
       this.errorCount++;
       await this.logError(error, { serverName, toolName, args });
-      
+
       if (this.errorCount >= this.maxErrors) {
         throw new Error(`Maximum error count (${this.maxErrors}) reached. Stopping execution.`);
       }
-      
+
       throw error;
     }
   }
@@ -185,7 +185,7 @@ class DevShopOrchestrator {
   async createSession(agentRole, projectContext = '') {
     const sessionId = uuidv4();
     const timestamp = new Date().toISOString();
-    
+
     this.activeSession = {
       id: sessionId,
       agentRole,
@@ -198,7 +198,7 @@ class DevShopOrchestrator {
     // Create session in state and logging
     const stateDir = path.join(rootDir, 'logs');
     const logDir = path.join(rootDir, 'logs');
-    
+
     await StateManager.createSession(sessionId, stateDir, {
       agent_role: agentRole,
       project_context: projectContext,
@@ -217,11 +217,11 @@ class DevShopOrchestrator {
 
     const logDir = path.join(rootDir, 'logs');
     await Logger.logInteraction(
-      this.activeSession.id, 
-      logDir, 
-      type, 
-      content, 
-      this.activeSession.agentRole, 
+      this.activeSession.id,
+      logDir,
+      type,
+      content,
+      this.activeSession.agentRole,
       metadata
     );
   }
@@ -231,11 +231,11 @@ class DevShopOrchestrator {
 
     const logDir = path.join(rootDir, 'logs');
     await Logger.logInteraction(
-      this.activeSession.id, 
-      logDir, 
-      'error', 
-      error.message, 
-      this.activeSession.agentRole, 
+      this.activeSession.id,
+      logDir,
+      'error',
+      error.message,
+      this.activeSession.agentRole,
       { context, stack: error.stack }
     );
   }
@@ -256,7 +256,7 @@ class DevShopOrchestrator {
     });
 
     const result = JSON.parse(usage.content[0].text);
-    
+
     if (!result.within_limits) {
       console.log(chalk.yellow('⚠️  Budget limits exceeded:'));
       result.violations.forEach(violation => {
@@ -264,15 +264,15 @@ class DevShopOrchestrator {
       });
       return false;
     }
-    
+
     return true;
   }
 
   async executeBAAgent(repoOwner, repoName, featureDescription) {
     console.log(chalk.cyan(`\n🔍 BA Agent analyzing request for ${repoOwner}/${repoName}`));
-    
+
     const sessionId = await this.createSession('ba', `Repository: ${repoOwner}/${repoName}`);
-    
+
     try {
       // Get available tools
       const availableTools = [
@@ -293,7 +293,7 @@ class DevShopOrchestrator {
 
       // Analyze the repository structure
       await this.logInteraction('user_input', `Analyze ${repoOwner}/${repoName} and create requirements for: ${featureDescription}`);
-      
+
       const repoFiles = await this.callMCPTool('github', 'github_list_files', {
         owner: repoOwner,
         repo: repoName,
@@ -302,9 +302,9 @@ class DevShopOrchestrator {
 
       const messages = [
         { role: 'system', content: systemPrompt },
-        { 
-          role: 'user', 
-          content: `Please analyze the repository ${repoOwner}/${repoName} and create detailed requirements for this feature: "${featureDescription}"\n\nRepository structure:\n${repoFiles.content[0].text}\n\nPlease:\n1. Ask any clarifying questions if needed\n2. Analyze the existing codebase structure\n3. Create a detailed GitHub issue with requirements\n4. Include acceptance criteria and technical considerations` 
+        {
+          role: 'user',
+          content: `Please analyze the repository ${repoOwner}/${repoName} and create detailed requirements for this feature: "${featureDescription}"\n\nRepository structure:\n${repoFiles.content[0].text}\n\nPlease:\n1. Ask any clarifying questions if needed\n2. Analyze the existing codebase structure\n3. Create a detailed GitHub issue with requirements\n4. Include acceptance criteria and technical considerations`
         }
       ];
 
@@ -319,7 +319,7 @@ class DevShopOrchestrator {
 
       const response = JSON.parse(completion.content[0].text);
       await this.logInteraction('agent_response', response.content);
-      
+
       // Log cost
       const logDir = path.join(rootDir, 'logs');
       await Logger.logCost(
@@ -337,7 +337,7 @@ class DevShopOrchestrator {
       // Check if we should create an issue based on the response
       if (response.content.includes('GitHub issue') || response.content.includes('requirements')) {
         console.log(chalk.blue('\n🎫 Creating GitHub issue...'));
-        
+
         // Extract title and body (simplified - in reality would use better parsing)
         const issueTitle = `Feature: ${featureDescription}`;
         const issueBody = `# Requirements Analysis\n\n${response.content}\n\n---\n*Generated by DevShop BA Agent*\nSession: ${sessionId}`;
@@ -366,9 +366,9 @@ class DevShopOrchestrator {
 
   async executeDevAgent(repoOwner, repoName, issueNumber) {
     console.log(chalk.cyan(`\n👨‍💻 Developer Agent working on ${repoOwner}/${repoName} issue #${issueNumber}`));
-    
+
     const sessionId = await this.createSession('developer', `Repository: ${repoOwner}/${repoName}, Issue: #${issueNumber}`);
-    
+
     try {
       // Get the issue details
       const issue = await this.callMCPTool('github', 'github_get_issue', {
@@ -408,9 +408,9 @@ class DevShopOrchestrator {
 
       const messages = [
         { role: 'system', content: systemPrompt },
-        { 
-          role: 'user', 
-          content: `Please implement the following issue:\n\n**Title:** ${issueData.title}\n\n**Description:**\n${issueData.body}\n\nRepository structure:\n${repoFiles.content[0].text}\n\nPlease:\n1. Analyze the existing codebase\n2. Plan the implementation\n3. Create/update necessary files\n4. Follow the project's existing patterns and conventions` 
+        {
+          role: 'user',
+          content: `Please implement the following issue:\n\n**Title:** ${issueData.title}\n\n**Description:**\n${issueData.body}\n\nRepository structure:\n${repoFiles.content[0].text}\n\nPlease:\n1. Analyze the existing codebase\n2. Plan the implementation\n3. Create/update necessary files\n4. Follow the project's existing patterns and conventions`
         }
       ];
 
@@ -457,7 +457,7 @@ class DevShopOrchestrator {
   async showLogs(sessionId) {
     try {
       const logDir = path.join(rootDir, 'logs');
-      
+
       if (sessionId) {
         const logs = await Logger.getSessionLogs(sessionId, logDir);
 
@@ -481,7 +481,7 @@ class DevShopOrchestrator {
     for (const [serverName, client] of Object.entries(this.mcpClients)) {
       try {
         console.log(chalk.blue(`Testing ${serverName} server...`));
-        
+
         let toolsResponse;
         if (serverName === 'github' && client instanceof GitHubDirectClient) {
           // Use direct GitHub client
@@ -499,15 +499,15 @@ class DevShopOrchestrator {
             method: 'tools/list'
           });
         }
-        
+
         if (!toolsResponse) {
           console.log(chalk.yellow(`⚠ ${serverName} server: no response received`));
           continue;
         }
-        
+
         const toolCount = toolsResponse.tools ? toolsResponse.tools.length : 0;
         console.log(chalk.green(`✓ ${serverName} server: ${toolCount} tools available`));
-        
+
         if (toolCount > 0 && serverName === 'github') {
           console.log(chalk.gray(`  Available tools: ${toolsResponse.tools.slice(0, 3).map(t => t.name).join(', ')}${toolsResponse.tools.length > 3 ? '...' : ''}`));
         }
@@ -518,22 +518,62 @@ class DevShopOrchestrator {
 
     // Test specific functionality if we can identify the right tools
     console.log(chalk.blue('\nTesting specific operations...'));
-    
+
     // Test LiteLLM if available
     try {
       const litellmClient = this.mcpClients.litellm;
       if (litellmClient) {
         const result = await this.callMCPTool('litellm', 'llm_chat_completion', {
           messages: [{ role: 'user', content: 'Hello, just testing the connection.' }],
-          model: 'gpt-5-mini',
+          model: 'gpt-5-nano',
           api_key: this.config.llm.api_key,
           base_url: this.config.llm.base_url,
-          max_tokens: 10
+          max_completion_tokens: 10
         });
         console.log(chalk.green('✓ OpenAI API test successful'));
       }
     } catch (error) {
       console.log(chalk.red('✗ OpenAI API test failed:', error.message));
+    }
+
+    // Test Anthropic if available
+    if (process.env.ANTHROPIC_API_KEY) {
+      try {
+        const litellmClient = this.mcpClients.litellm;
+        if (litellmClient) {
+          const result = await this.callMCPTool('litellm', 'llm_chat_completion', {
+            messages: [{ role: 'user', content: 'Hello, just testing Anthropic integration.' }],
+            model: 'claude-3-haiku',
+            api_key: process.env.ANTHROPIC_API_KEY,
+            max_tokens: 10
+          });
+          console.log(chalk.green('✓ Anthropic API test successful'));
+        }
+      } catch (error) {
+        console.log(chalk.red('✗ Anthropic API test failed:', error.message));
+      }
+    } else {
+      console.log(chalk.yellow('⚠ Anthropic API: No key provided, skipping test'));
+    }
+
+    // Test Google if available
+    if (process.env.GOOGLE_API_KEY) {
+      try {
+        const litellmClient = this.mcpClients.litellm;
+        if (litellmClient) {
+          const result = await this.callMCPTool('litellm', 'llm_chat_completion', {
+            messages: [{ role: 'user', content: 'Hello, just testing Google integration.' }],
+            model: 'gemini-2.5-flash-lite',
+            api_key: process.env.GOOGLE_API_KEY,
+            max_tokens: 10
+          });
+          console.log(chalk.green('✓ Google API test successful'));
+        }
+      } catch (error) {
+        console.log(chalk.red('✗ Google API test failed:', error.message));
+      }
+    } else {
+      console.log(chalk.yellow('⚠ Google API: No key provided, skipping test'));
     }
 
     // Test Logging
@@ -591,7 +631,7 @@ async function main() {
       try {
         await orchestrator.loadConfig();
         await orchestrator.initializeMCPClients();
-        
+
         const [owner, repo] = options.repo.split('/');
         if (!owner || !repo) {
           throw new Error('Repository must be in format owner/repo-name');
@@ -615,7 +655,7 @@ async function main() {
       try {
         await orchestrator.loadConfig();
         await orchestrator.initializeMCPClients();
-        
+
         const [owner, repo] = options.repo.split('/');
         if (!owner || !repo) {
           throw new Error('Repository must be in format owner/repo-name');

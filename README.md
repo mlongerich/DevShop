@@ -7,7 +7,7 @@ DevShop is a weekend MVP implementation that creates a development environment w
 ## 🎯 What Does DevShop Do?
 
 - **BA Agent**: Analyzes user requirements and creates detailed GitHub issues
-- **Developer Agent**: Reads GitHub issues and implements features with clean code  
+- **Developer Agent**: Reads GitHub issues and implements features with clean code
 - **Self-Improvement**: Can work on its own codebase to add new capabilities
 - **Full Observability**: Logs all agent interactions, costs, and decisions
 - **Cost Controls**: Built-in budgets and limits to prevent runaway spending
@@ -42,7 +42,7 @@ devshop/
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - Docker (for official GitHub MCP server)
 - GitHub Personal Access Token ([create one](https://github.com/settings/personal-access-tokens/new))
 - OpenAI API Key ([get one](https://platform.openai.com/api-keys))
@@ -95,7 +95,7 @@ The BA Agent analyzes your requests and creates detailed requirements:
 # Analyze a feature request
 node client/devshop-mcp.js ba --repo=myorg/myapp "Add real-time notifications"
 
-# Create requirements for a bug fix  
+# Create requirements for a bug fix
 node client/devshop-mcp.js ba --repo=myorg/myapp "Fix memory leak in background processing"
 
 # Analyze existing codebase for improvements
@@ -203,8 +203,8 @@ OPENAI_API_KEY=sk-your_key_here
 
 # Optional
 GITHUB_ORG=your-default-org
-OPENAI_BA_MODEL=gpt-4o-mini
-OPENAI_DEV_MODEL=gpt-4o-mini
+OPENAI_BA_MODEL=gpt-5-nano
+OPENAI_DEV_MODEL=gpt-5-nano
 MAX_COST_PER_SESSION=5.00
 MAX_TOKENS_PER_SESSION=10000
 ```
@@ -214,8 +214,8 @@ MAX_TOKENS_PER_SESSION=10000
 ```json
 {
   "models": {
-    "ba": "gpt-4o-mini",
-    "developer": "gpt-4o-mini"
+    "ba": "gpt-5-nano",
+    "developer": "gpt-5-nano"
   },
   "cost_controls": {
     "max_tokens_per_session": 10000,
@@ -229,7 +229,7 @@ MAX_TOKENS_PER_SESSION=10000
 DevShop includes built-in cost controls:
 
 - **Token Limits**: Prevent excessive token usage
-- **Cost Budgets**: Set maximum spend per session  
+- **Cost Budgets**: Set maximum spend per session
 - **Usage Tracking**: Monitor costs across all agents
 - **Automatic Cutoffs**: Stop execution when limits are reached
 
@@ -243,7 +243,7 @@ node client/devshop-mcp.js logs --session=<session-id>
 Every agent interaction is logged for analysis:
 
 - **Interaction Logs**: All agent conversations
-- **Tool Usage**: MCP tool calls and results  
+- **Tool Usage**: MCP tool calls and results
 - **Cost Tracking**: Token usage and costs
 - **Session Summaries**: High-level session overview
 
@@ -285,7 +285,7 @@ DevShop can work across multiple repositories:
 # Analyze one repo
 npm run ba -- --repo=org/frontend "Add user dashboard"
 
-# Implement in another repo  
+# Implement in another repo
 npm run ba -- --repo=org/backend "Add user API endpoints"
 
 # Cross-repository coordination (advanced)
@@ -300,7 +300,7 @@ npm run ba -- --repo=org/frontend "Integrate with user API from backend repo"
 - Check that all MCP servers are executable: `chmod +x servers/*.js`
 - Ensure Node.js modules are installed: `npm install`
 
-**"GitHub token invalid"**  
+**"GitHub token invalid"**
 - Verify token has `repo`, `issues`, and `pull_requests` permissions
 - Check token isn't expired
 
@@ -333,7 +333,7 @@ DevShop is designed to bootstrap itself. Planned improvements:
 
 - [ ] **Web Dashboard**: Real-time monitoring and control
 - [ ] **Multi-Agent Coordination**: Agents that work together
-- [ ] **Code Review Agent**: Automated code quality checks  
+- [ ] **Code Review Agent**: Automated code quality checks
 - [ ] **Testing Agent**: Automated test generation
 - [ ] **Documentation Agent**: Auto-generated docs
 - [ ] **Performance Agent**: Code optimization

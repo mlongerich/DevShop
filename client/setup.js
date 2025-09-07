@@ -26,9 +26,9 @@ class DevShopSetup {
 
   async checkRequirements() {
     console.log(chalk.blue('🔍 Checking requirements...\n'));
-    
+
     const checks = [];
-    
+
     // Check Node.js version
     const nodeVersion = process.version;
     const majorVersion = parseInt(nodeVersion.substring(1).split('.')[0]);
@@ -71,7 +71,7 @@ class DevShopSetup {
 
     const envPath = path.join(rootDir, '.env');
     let existingEnv = {};
-    
+
     // Try to load existing .env file
     try {
       const content = await fs.readFile(envPath, 'utf8');
@@ -91,11 +91,11 @@ class DevShopSetup {
     console.log(chalk.cyan('\\n1. GitHub Configuration:'));
     console.log('   You need a GitHub Personal Access Token with repo, issues, and pull_requests permissions.');
     console.log('   Create one at: https://github.com/settings/personal-access-tokens/new');
-    
+
     const currentGithubToken = existingEnv.GITHUB_TOKEN || '';
     const displayToken = currentGithubToken ? `${currentGithubToken.substring(0, 10)}...` : '(not set)';
     console.log(`   Current: ${displayToken}`);
-    
+
     const githubToken = await this.ask('   Enter GitHub token (or press Enter to keep current): ');
     const finalGithubToken = githubToken.trim() || existingEnv.GITHUB_TOKEN || '';
 
@@ -108,17 +108,17 @@ class DevShopSetup {
     // OpenAI API Key
     console.log(chalk.cyan('\\n2. OpenAI Configuration:'));
     console.log('   You need an OpenAI API key from: https://platform.openai.com/api-keys');
-    
+
     const currentOpenAIKey = existingEnv.OPENAI_API_KEY || '';
     const displayKey = currentOpenAIKey ? `${currentOpenAIKey.substring(0, 10)}...` : '(not set)';
     console.log(`   Current: ${displayKey}`);
-    
+
     const openaiKey = await this.ask('   Enter OpenAI API key (or press Enter to keep current): ');
     const finalOpenAIKey = openaiKey.trim() || existingEnv.OPENAI_API_KEY || '';
 
     // Optional settings
     console.log(chalk.cyan('\\n3. Optional Settings:'));
-    
+
     const currentBaModel = existingEnv.OPENAI_BA_MODEL || '';
     console.log(`   Current BA model: ${currentBaModel || 'gpt-4o-mini (default)'}`);
     const baModel = await this.ask('   BA Agent model (press Enter for default): ');
@@ -141,7 +141,7 @@ class DevShopSetup {
 # GitHub Configuration
 GITHUB_TOKEN=${finalGithubToken}${finalGithubOrg ? `\\nGITHUB_ORG=${finalGithubOrg}` : ''}
 
-# OpenAI Configuration  
+# OpenAI Configuration
 OPENAI_API_KEY=${finalOpenAIKey}${finalBaModel ? `\\nOPENAI_BA_MODEL=${finalBaModel}` : ''}${finalDevModel ? `\\nOPENAI_DEV_MODEL=${finalDevModel}` : ''}
 
 # Optional: Cost limits${finalMaxCost ? `\\nMAX_COST_PER_SESSION=${finalMaxCost}` : ''}
@@ -182,13 +182,13 @@ MAX_TOKENS_PER_SESSION=10000
       try {
         const OpenAI = await import('openai');
         const openai = new OpenAI.default({ apiKey: config.openaiKey });
-        
+
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
+          model: 'gpt-5-nano',
           messages: [{ role: 'user', content: 'Hello! This is a connection test.' }],
           max_tokens: 10
         });
-        
+
         console.log(chalk.green('✓ OpenAI API: Connected successfully'));
       } catch (error) {
         console.log(chalk.red(`✗ OpenAI API: ${error.message}`));
@@ -201,10 +201,10 @@ MAX_TOKENS_PER_SESSION=10000
 
   async installDependencies() {
     console.log(chalk.blue('\\n📦 Installing dependencies...\\n'));
-    
+
     try {
       const { spawn } = await import('child_process');
-      
+
       return new Promise((resolve, reject) => {
         const npm = spawn('npm', ['install'], {
           stdio: 'inherit',
@@ -234,9 +234,9 @@ MAX_TOKENS_PER_SESSION=10000
 
   async createDirectories() {
     console.log(chalk.blue('\\n📁 Creating required directories...\\n'));
-    
+
     const directories = ['logs', 'logs/backups'];
-    
+
     for (const dir of directories) {
       const dirPath = path.join(rootDir, dir);
       try {
