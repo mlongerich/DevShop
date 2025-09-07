@@ -298,6 +298,41 @@ class FastMCPDirectClient extends EventEmitter {
     return this.tools.get(toolName);
   }
 
+  // MCP Client Manager compatibility methods
+  async listTools() {
+    try {
+      const response = await this.sendRequest('tools/list');
+      return response.tools || [];
+    } catch (error) {
+      console.error('FastMCP listTools error:', error.message);
+      // Fallback to built-in tools list
+      return [
+        { name: 'llm_chat_completion', description: 'Multi-provider LLM chat completion' },
+        { name: 'llm_get_usage', description: 'Get usage statistics' },
+        { name: 'llm_check_limits', description: 'Check usage limits' },
+        { name: 'llm_list_models', description: 'List available models' },
+        { name: 'llm_create_agent_prompt', description: 'Create agent prompts' }
+      ];
+    }
+  }
+
+  async callTool(toolName, args) {
+    try {
+      const response = await this.sendRequest('tools/call', {
+        name: toolName,
+        arguments: args
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      return response;
+    } catch (error) {
+      throw new Error(`FastMCP tool call failed for ${toolName}: ${error.message}`);
+    }
+  }
+
   isConnected() {
     return this.connected && this.process && !this.process.killed;
   }
