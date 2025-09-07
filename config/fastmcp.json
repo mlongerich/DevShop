@@ -46,16 +46,36 @@
       "path": "servers/fastmcp-litellm-server-fixed.js",
       "timeout_ms": 60000,
       "enabled": true,
+      "sessionId": "devshop_main",
+      "userId": "devshop_user",
       "features": {
         "session_management": true,
-        "type_safety": true,
-        "enhanced_error_handling": true
+        "oauth": false,
+        "streaming": false
       }
+    },
+    "litellm": {
+      "type": "local",
+      "path": "servers/litellm-server.js",
+      "timeout_ms": 60000,
+      "enabled": false,
+      "note": "Legacy MCP SDK implementation - disabled in favor of FastMCP"
     }
   },
   "directories": {
     "logs": "logs",
     "state": "logs",
     "prompts": "prompts"
+  },
+  "fastmcp": {
+    "version": "1.1.0",
+    "migration_status": "active",
+    "features_enabled": {
+      "enhanced_error_handling": true,
+      "session_tracking": true,
+      "usage_analytics": true,
+      "model_validation": true,
+      "cost_estimation": true
+    }
   }
 }

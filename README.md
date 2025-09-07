@@ -39,10 +39,12 @@ devshop/
 │   │   └── developer-agent.js      # Developer agent
 │   ├── clients/                    # Direct MCP Clients
 │   │   ├── github-direct-client.js # GitHub MCP integration
-│   │   └── litellm-direct-client.js # LiteLLM MCP integration
+│   │   ├── fastmcp-direct-client.js # FastMCP client (primary)
+│   │   └── litellm-direct-client.js # Legacy MCP SDK client
 │   └── setup.js                    # Legacy setup (maintained for compatibility)
 ├── servers/
-│   ├── litellm-server.js           # Main LiteLLM server (refactored)
+│   ├── fastmcp-litellm-server-fixed.js # Main FastMCP server (production)
+│   ├── litellm-server.js           # Legacy MCP SDK server (fallback)
 │   ├── providers/                  # Strategy Pattern for LLM Providers
 │   │   ├── base-provider.js        # Abstract provider interface
 │   │   ├── openai-provider.js      # OpenAI implementation
@@ -51,9 +53,9 @@ devshop/
 │   │   ├── provider-factory.js     # Factory pattern for providers
 │   │   └── provider-manager.js     # Provider lifecycle management
 │   ├── commands/                   # Command Pattern for Server Operations
-│   │   ├── chat-completion-command.js # LLM chat completions
-│   │   ├── usage-command.js        # Usage tracking
-│   │   └── limits-command.js       # Budget limit checks
+│   │   ├── chat-completion-command.js # LLM chat completions (legacy)
+│   │   ├── usage-command.js        # Usage tracking (legacy)
+│   │   └── limits-command.js       # Budget limit checks (legacy)
 │   ├── decorators/                 # Decorator Pattern
 │   │   └── usage-tracking-decorator.js # Usage tracking decorator
 │   └── config/                     # Configuration Management
@@ -83,10 +85,12 @@ devshop/
 ### 🔄 Architecture Benefits
 
 - **Maintainability**: Reduced main orchestrator from 724 to ~200 lines
+- **FastMCP Integration**: 20% code reduction with FastMCP framework (262→208 lines)
 - **Testability**: Each component can be tested in isolation
 - **Extensibility**: Easy to add new commands, agents, or providers
 - **Modularity**: Clean separation of concerns across layers
 - **Reliability**: Comprehensive error handling and logging
+- **Enhanced Session Management**: Per-client session tracking with FastMCP
 
 ## 🚀 Quick Start
 
@@ -118,7 +122,12 @@ devshop/
    npm test
    ```
 
-5. **Check system status:**
+5. **Test FastMCP integration:**
+   ```bash
+   npm run test:fastmcp:quick
+   ```
+
+6. **Check system status:**
    ```bash
    npm run status
    ```
@@ -205,6 +214,9 @@ npm run status
 
 # Run comprehensive system tests
 npm run test --full
+
+# Test FastMCP integration
+npm run test:fastmcp
 
 # Test only connections
 npm run test --connections

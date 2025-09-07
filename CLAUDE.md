@@ -112,14 +112,21 @@ npm run github-server:stop      # Stop GitHub MCP server
 10. `client/agents/ba-agent.js` - Business analyst agent with GitHub integration
 11. `client/agents/developer-agent.js` - Developer agent with code generation
 
+### MCP Client Layer
+12. `client/clients/fastmcp-direct-client.js` - **FastMCP client (primary)** - Enhanced session management
+13. `client/clients/github-direct-client.js` - Direct GitHub MCP client (bypasses SDK issues)
+14. `client/clients/litellm-direct-client.js` - Legacy MCP SDK client (fallback)
+
 ### Provider Architecture
-12. `servers/providers/provider-factory.js` - Strategy pattern for LLM provider creation
-13. `servers/litellm-server.js` - Multi-provider LLM server with cost tracking
+15. `servers/providers/provider-factory.js` - Strategy pattern for LLM provider creation
+16. `servers/fastmcp-litellm-server-fixed.js` - **FastMCP server (primary)** - 20% code reduction
+17. `servers/litellm-server.js` - Legacy MCP SDK server (fallback)
 
 ### Utilities and Configuration
-14. `utils/logger.js` - File-based logging utility functions
-15. `utils/state-manager.js` - JSON file-based state management
-16. `config/default.json` - Configuration template with multi-provider settings
+18. `utils/logger.js` - File-based logging utility functions
+19. `utils/state-manager.js` - JSON file-based state management
+20. `config/default.json` - Configuration template with multi-provider settings
+21. `config/fastmcp.json` - **FastMCP configuration (recommended)** - Enhanced session features
 
 ## Design Patterns Applied
 

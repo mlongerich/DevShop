@@ -1,5 +1,6 @@
 import GitHubDirectClient from '../clients/github-direct-client.js';
 import LiteLLMDirectClient from '../clients/litellm-direct-client.js';
+import { FastMCPDirectClient } from '../clients/fastmcp-direct-client.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { spawn } from 'child_process';
@@ -49,6 +50,11 @@ export class MCPClientManager {
       case 'litellm':
         await this.createLiteLLMClient(config);
         break;
+
+      case 'fastmcp':
+      case 'fastmcp-litellm':
+        await this.createFastMCPClient(config);
+        break;
       
       default:
         await this.createGenericClient(serverName, config);
@@ -84,6 +90,24 @@ export class MCPClientManager {
       this.clients['litellm'] = litellmClient;
     } else {
       throw new Error(`Unsupported LiteLLM client type: ${config.type}`);
+    }
+  }
+
+  /**
+   * Create FastMCP direct client
+   */
+  async createFastMCPClient(config) {
+    if (config.type === 'local' || config.type === 'fastmcp') {
+      const fastmcpClient = new FastMCPDirectClient({
+        sessionId: config.sessionId || `devshop_${Date.now()}`,
+        userId: config.userId || 'devshop'
+      });
+      
+      await fastmcpClient.connect();
+      this.clients['fastmcp'] = fastmcpClient;
+      this.clients['litellm'] = fastmcpClient; // Alias for backward compatibility
+    } else {
+      throw new Error(`Unsupported FastMCP client type: ${config.type}`);
     }
   }
 

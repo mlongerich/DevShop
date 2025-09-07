@@ -13,7 +13,10 @@
     "logs": "node client/devshop-mcp.js logs",
     "status": "node client/devshop-mcp.js status",
     "github-server": "bash scripts/start-github-server.sh",
-    "github-server:stop": "docker stop devshop-github-server 2>/dev/null || true"
+    "github-server:stop": "docker stop devshop-github-server 2>/dev/null || true",
+    "test:fastmcp": "node test-fastmcp-integration.js",
+    "test:fastmcp:quick": "node test-fastmcp-integration.js quick",
+    "fastmcp:server": "node servers/fastmcp-litellm-server-fixed.js"
   },
   "bin": {
     "devshop": "./client/devshop-mcp.js"
@@ -33,9 +36,11 @@
     "chalk": "^5.3.0",
     "commander": "^11.1.0",
     "dotenv": "^16.3.1",
+    "fastmcp": "^3.15.2",
     "openai": "^4.28.4",
     "uuid": "^9.0.1",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "zod": "^3.25.76"
   },
   "engines": {
     "node": ">=18.0.0"

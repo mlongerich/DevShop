@@ -194,7 +194,7 @@ export class ProviderManager {
     let score = 50; // Base score
 
     // Cost preference scoring
-    const pricing = this.pricingRepository.getPricing(model);
+    const pricing = this.pricingConfig.getPricing(model);
     const costPer1k = pricing.input + pricing.output;
     
     if (criteria.cost_preference === 'low') {
@@ -226,5 +226,121 @@ export class ProviderManager {
     }
 
     return Math.min(Math.max(score, 0), 100); // Clamp between 0-100
+  }
+
+  /**
+   * Get aggregated usage statistics across all providers
+   * @param {string} [sessionId] - Filter by session ID
+   * @param {string} [providerName] - Filter by provider name
+   * @returns {Object} Usage statistics
+   */
+  getUsageStats(sessionId, providerName) {
+    const stats = {
+      total_tokens: 0,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_cost: 0,
+      sessions: {},
+      providers: {},
+      timestamp: new Date().toISOString()
+    };
+
+    for (const [cacheKey, provider] of this.providers.entries()) {
+      const [providerType] = cacheKey.split(':');
+      
+      // Skip if provider filter doesn't match
+      if (providerName && providerType !== providerName) {
+        continue;
+      }
+
+      // Get usage from decorated provider
+      if (provider.usage) {
+        const usage = provider.usage;
+        
+        // Aggregate totals
+        stats.total_tokens += usage.total_tokens || 0;
+        stats.prompt_tokens += usage.prompt_tokens || 0;
+        stats.completion_tokens += usage.completion_tokens || 0;
+        stats.total_cost += usage.total_cost || 0;
+
+        // Provider-specific stats
+        if (!stats.providers[providerType]) {
+          stats.providers[providerType] = {
+            total_tokens: 0,
+            total_cost: 0,
+            session_count: 0
+          };
+        }
+        
+        stats.providers[providerType].total_tokens += usage.total_tokens || 0;
+        stats.providers[providerType].total_cost += usage.total_cost || 0;
+
+        // Session-specific stats
+        if (usage.sessions) {
+          for (const [sessId, sessionUsage] of Object.entries(usage.sessions)) {
+            // Skip if session filter doesn't match
+            if (sessionId && sessId !== sessionId) {
+              continue;
+            }
+
+            if (!stats.sessions[sessId]) {
+              stats.sessions[sessId] = {
+                total_tokens: 0,
+                total_cost: 0,
+                providers: []
+              };
+            }
+
+            stats.sessions[sessId].total_tokens += sessionUsage.total_tokens || 0;
+            stats.sessions[sessId].total_cost += sessionUsage.total_cost || 0;
+            
+            if (!stats.sessions[sessId].providers.includes(providerType)) {
+              stats.sessions[sessId].providers.push(providerType);
+            }
+            
+            stats.providers[providerType].session_count += 1;
+          }
+        }
+      }
+    }
+
+    return stats;
+  }
+
+  /**
+   * Check if usage is within configured limits
+   * @param {string} [sessionId] - Session to check limits for
+   * @param {number} [proposedTokens] - Additional tokens to validate
+   * @returns {Object} Limit check results
+   */
+  checkLimits(sessionId, proposedTokens = 0) {
+    const maxCostPerSession = parseFloat(process.env.MAX_COST_PER_SESSION) || 5.00;
+    const maxTokensPerSession = parseInt(process.env.MAX_TOKENS_PER_SESSION) || 10000;
+
+    const currentUsage = this.getUsageStats(sessionId);
+    const sessionUsage = sessionId && currentUsage.sessions[sessionId] 
+      ? currentUsage.sessions[sessionId] 
+      : { total_tokens: 0, total_cost: 0 };
+
+    const projectedTokens = sessionUsage.total_tokens + proposedTokens;
+    const projectedCost = sessionUsage.total_cost + (proposedTokens * 0.001); // Rough estimate
+
+    return {
+      within_limits: projectedTokens <= maxTokensPerSession && projectedCost <= maxCostPerSession,
+      current_usage: {
+        tokens: sessionUsage.total_tokens,
+        cost: sessionUsage.total_cost
+      },
+      projected_usage: {
+        tokens: projectedTokens,
+        cost: projectedCost
+      },
+      limits: {
+        max_tokens: maxTokensPerSession,
+        max_cost: maxCostPerSession
+      },
+      session_id: sessionId,
+      timestamp: new Date().toISOString()
+    };
   }
 }
