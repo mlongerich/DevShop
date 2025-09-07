@@ -1,8 +1,8 @@
-# DevShop 2.0 🚀
+# DevShop 1.1 🚀
 
 **Self-improving development shop using MCP (Model Context Protocol) and AI agents**
 
-DevShop 2.0 is a completely refactored implementation featuring modern service architecture with design patterns. AI agents can analyze requirements, generate code, and continuously improve themselves using a clean, maintainable codebase built with Strategy, Factory, Command, and Decorator patterns.
+DevShop 1.1 is a completely refactored implementation featuring modern service architecture with design patterns. AI agents can analyze requirements, generate code, and continuously improve themselves using a clean, maintainable codebase built with Strategy, Factory, Command, and Decorator patterns.
 
 ## 🎯 What Does DevShop Do?
 
@@ -13,14 +13,14 @@ DevShop 2.0 is a completely refactored implementation featuring modern service a
 - **Cost Controls**: Built-in budgets and limits to prevent runaway spending
 - **Modern Architecture**: Clean service layer with proper separation of concerns
 
-## 🏗️ Architecture (v2.0)
+## 🏗️ Architecture (v1.1)
 
-DevShop 2.0 uses a modern service-oriented architecture with design patterns:
+DevShop 1.1 uses a modern service-oriented architecture with design patterns:
 
 ```
 devshop/
 ├── client/
-│   ├── devshop-mcp.js              # Main CLI orchestrator (v2.0)
+│   ├── devshop-mcp.js              # Main CLI orchestrator (v1.1)
 │   ├── services/                   # Service Layer
 │   │   ├── config-service.js       # Configuration management
 │   │   ├── session-service.js      # Session lifecycle management
@@ -84,7 +84,7 @@ devshop/
 
 - **Maintainability**: Reduced main orchestrator from 724 to ~200 lines
 - **Testability**: Each component can be tested in isolation
-- **Extensibility**: Easy to add new commands, agents, or providers  
+- **Extensibility**: Easy to add new commands, agents, or providers
 - **Modularity**: Clean separation of concerns across layers
 - **Reliability**: Comprehensive error handling and logging
 
@@ -150,14 +150,14 @@ The BA Agent analyzes your requests and creates detailed requirements:
 # Analyze a feature request
 npm run ba -- --repo=myorg/myapp "Add real-time notifications"
 
-# Create requirements for a bug fix  
+# Create requirements for a bug fix
 npm run ba -- --repo=myorg/myapp "Fix memory leak in background processing"
 
 # Analyze existing codebase for improvements
 npm run ba -- --repo=myorg/myapp "Optimize database queries for better performance"
 ```
 
-**New v2.0 Options:**
+**New v1.1 Options:**
 ```bash
 # Resume an existing session
 npm run ba -- --repo=myorg/myapp --session=abc-123-def "Continue analysis"
@@ -224,7 +224,7 @@ npm run logs --session=abc-123 --export
 
 ### Self-Improvement Workflow
 
-DevShop 2.0 can improve itself with the new architecture:
+DevShop 1.1 can improve itself with the new architecture:
 
 1. **Create improvement requirements:**
    ```bash
@@ -315,7 +315,7 @@ MAX_TOKENS_PER_SESSION=10000
       "enabled": true
     },
     "litellm": {
-      "type": "local", 
+      "type": "local",
       "enabled": true
     }
   },
@@ -328,7 +328,7 @@ MAX_TOKENS_PER_SESSION=10000
 
 ## 📊 Cost Tracking & Multi-Provider Support
 
-DevShop 2.0 includes enhanced cost controls with multi-provider support:
+DevShop 1.1 includes enhanced cost controls with multi-provider support:
 
 - **Multi-Provider LLM Support**: OpenAI, Anthropic, Google
 - **Smart Model Selection**: Optimal model for each agent type
@@ -353,7 +353,7 @@ export GOOGLE_API_KEY=AIza...
 # Check current usage
 npm run logs --session=<session-id>
 
-# System status with cost info  
+# System status with cost info
 npm run status
 
 # Detailed system health check
@@ -402,7 +402,7 @@ With the new Command pattern, adding commands is straightforward:
 
 The Agent abstraction makes it easy to add specialized agents:
 
-1. Create new agent class extending `BaseAgent`  
+1. Create new agent class extending `BaseAgent`
 2. Implement agent-specific `execute()` logic
 3. Create corresponding command class
 4. Configure agent-specific prompts
@@ -425,12 +425,12 @@ Modify agent behavior by editing prompt files:
 
 ### Multi-Repository Workflow
 
-DevShop 2.0 supports enhanced multi-repository operations:
+DevShop 1.1 supports enhanced multi-repository operations:
 
 ```bash
 # Analyze multiple repositories
 npm run ba -- --repo=org/frontend "Add user dashboard"
-npm run ba -- --repo=org/backend "Add user API endpoints"  
+npm run ba -- --repo=org/backend "Add user API endpoints"
 npm run ba -- --repo=org/mobile "Add mobile user interface"
 
 # Coordinate cross-repository development
@@ -491,7 +491,7 @@ npm run setup --force
 
 ## 📈 Roadmap (v2.x)
 
-DevShop 2.0's clean architecture enables rapid feature development:
+DevShop 1.1's clean architecture enables rapid feature development:
 
 ### Immediate (v2.1)
 - [ ] **Enhanced Web Dashboard**: Real-time monitoring with React
@@ -518,7 +518,7 @@ DevShop 2.0's clean architecture enables rapid feature development:
 
 ## 🤝 Contributing
 
-DevShop 2.0's architecture makes contributions much easier:
+DevShop 1.1's architecture makes contributions much easier:
 
 ### For Developers
 1. **Use DevShop to improve DevShop:**
@@ -547,7 +547,7 @@ DevShop 2.0's architecture makes contributions much easier:
 
 ## 🔄 Migration from v1.x
 
-Upgrading from DevShop 1.x to 2.0:
+Upgrading from DevShop 1.x to 1.1:
 
 1. **Automatic Migration**: Existing configs and logs are compatible
 2. **New Commands**: Use new CLI structure (`npm run status`, enhanced options)
@@ -568,6 +568,6 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Ready to experience AI agents with clean architecture? Start with `npm run setup` and let DevShop 2.0 build itself!**
+**Ready to experience AI agents with clean architecture? Start with `npm run setup` and let DevShop 1.1 build itself!**
 
-*DevShop 2.0 - Where AI meets software engineering best practices* ✨
+*DevShop 1.1 - Where AI meets software engineering best practices* ✨

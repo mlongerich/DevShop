@@ -1,9 +1,9 @@
-# Claude Code Integration for DevShop 2.0
+# Claude Code Integration for DevShop 1.1
 
 This file provides context for Claude Code when working on the DevShop project.
 
 ## Project Overview
-DevShop 2.0 is a completely refactored self-improving development shop using MCP (Model Context Protocol) and AI agents with modern service architecture. It features:
+DevShop 1.1 is a completely refactored self-improving development shop using MCP (Model Context Protocol) and AI agents with modern service architecture. It features:
 
 - **Service Layer Architecture**: Clean separation of concerns with dedicated services
 - **Command Pattern Implementation**: Modular CLI commands with consistent interfaces
@@ -11,7 +11,7 @@ DevShop 2.0 is a completely refactored self-improving development shop using MCP
 - **Design Patterns**: Strategy, Factory, Command, and Decorator patterns throughout
 - **Multi-Provider LLM Support**: OpenAI, Anthropic, Google with smart model selection
 
-## Architecture (v2.0)
+## Architecture (v1.1)
 
 ### Service Layer
 - `client/services/config-service.js` - Configuration management and environment variable resolution
@@ -66,7 +66,7 @@ npm run ba -- --repo=org/repo "feature description"
 npm run ba -- --repo=org/repo --verbose "detailed analysis request"
 npm run ba -- --repo=org/repo --session=abc-123 "continue analysis"
 
-# Developer workflows  
+# Developer workflows
 npm run dev -- --repo=org/repo --issue=N
 npm run dev -- --repo=org/repo --issue=N --branch=feature-branch
 npm run dev -- --repo=org/repo --issue=N --dry-run
@@ -94,7 +94,7 @@ npm run github-server:stop      # Stop GitHub MCP server
 ## Key Files to Understand
 
 ### Main Orchestrator
-1. `client/devshop-mcp.js` - **Main CLI orchestrator (v2.0)** - Clean service-oriented architecture
+1. `client/devshop-mcp.js` - **Main CLI orchestrator (v1.1)** - Clean service-oriented architecture
 
 ### Core Services
 2. `client/services/config-service.js` - Configuration loading, validation, and environment resolution
@@ -128,7 +128,7 @@ npm run github-server:stop      # Stop GitHub MCP server
 - **Model Selection**: Agent-specific optimal model selection
 - **Cost Optimization**: Provider switching based on cost/performance
 
-### Factory Pattern  
+### Factory Pattern
 - **Provider Creation**: `ProviderFactory` creates appropriate provider instances
 - **MCP Client Creation**: `MCPClientManager` creates and manages client connections
 - **Command Instantiation**: Orchestrator creates command instances
@@ -185,7 +185,7 @@ npm run github-server:stop      # Stop GitHub MCP server
 - **Single Responsibility**: Each component has a clear, focused purpose
 - **Clear Dependencies**: Explicit service injection and interfaces
 
-### Testability  
+### Testability
 - **Isolated Components**: Each service/command can be tested independently
 - **Mock-Friendly**: Dependency injection enables easy mocking
 - **Comprehensive Coverage**: Multiple test modes for different scenarios
@@ -204,13 +204,13 @@ npm run github-server:stop      # Stop GitHub MCP server
 
 ### Local Development
 1. **Make Changes**: Edit services, commands, agents, or providers
-2. **Test Components**: `npm test --connections` or `npm test --apis`  
+2. **Test Components**: `npm test --connections` or `npm test --apis`
 3. **Test Integration**: `npm test --full`
 4. **Test Workflows**: `npm run ba --dry-run` or `npm run dev --dry-run`
 5. **Check Status**: `npm run status` for overall health
 
 ### Self-Improvement Workflow
-DevShop 2.0 can work on its own codebase:
+DevShop 1.1 can work on its own codebase:
 ```bash
 # Analyze improvement opportunities
 npm run ba -- --repo=your-org/devshop "Add web dashboard for monitoring"
@@ -222,4 +222,4 @@ npm run dev -- --repo=your-org/devshop --issue=1
 npm run logs --session=<session-id> --verbose
 ```
 
-This is a self-improving system - DevShop 2.0 can enhance its own architecture using the clean patterns established!
+This is a self-improving system - DevShop 1.1 can enhance its own architecture using the clean patterns established!

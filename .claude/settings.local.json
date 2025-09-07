@@ -8,7 +8,8 @@
       "Bash(npm run status:*)",
       "Bash(npm test)",
       "Bash(npm test:*)",
-      "Bash(npm run logs:*)"
+      "Bash(npm run logs:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

@@ -61,7 +61,7 @@ class DevShopOrchestrator {
       };
 
       this.initialized = true;
-      
+
     } catch (error) {
       console.error(chalk.red(`Failed to initialize DevShop: ${error.message}`));
       throw error;
@@ -134,7 +134,7 @@ class DevShopOrchestrator {
     if (this.mcpClientManager) {
       await this.mcpClientManager.cleanup();
     }
-    
+
     // Close any active sessions
     const activeSessionId = this.sessionService.getActiveSession();
     if (activeSessionId) {
@@ -153,7 +153,7 @@ async function main() {
   program
     .name('devshop')
     .description('DevShop - AI-powered development shop with BA and Developer agents')
-    .version('2.0.0');
+    .version('1.1.0');
 
   // Setup command - doesn't need full initialization
   program
@@ -183,7 +183,7 @@ async function main() {
     .action(async (description, options) => {
       try {
         await orchestrator.initialize();
-        
+
         const [owner, repo] = options.repo.split('/');
         if (!owner || !repo) {
           throw new Error('Repository must be in format owner/repo-name');
@@ -284,9 +284,9 @@ async function main() {
     .action(async () => {
       try {
         await orchestrator.initialize();
-        
+
         console.log(chalk.blue('🔍 DevShop System Status\n'));
-        
+
         // Configuration status
         const configCheck = orchestrator.configService.checkConfiguration();
         console.log(chalk.blue('📋 Configuration:'));

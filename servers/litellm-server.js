@@ -19,7 +19,7 @@ class LiteLLMMCPServer {
     this.server = new Server(
       {
         name: 'litellm-mcp-server',
-        version: '2.0.0',
+        version: '1.1.0',
       },
       {
         capabilities: {
@@ -31,12 +31,12 @@ class LiteLLMMCPServer {
     // Initialize components using dependency injection
     this.providerManager = new ProviderManager();
     this.commands = new Map();
-    
+
     // Register commands
     this.registerCommand(new ChatCompletionCommand(this.providerManager));
     this.registerCommand(new UsageCommand(this.providerManager));
     this.registerCommand(new LimitsCommand(this.providerManager));
-    
+
     this.setupToolHandlers();
   }
 
@@ -55,7 +55,7 @@ class LiteLLMMCPServer {
     // List available tools
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       const tools = [];
-      
+
       for (const command of this.commands.values()) {
         tools.push({
           name: command.getName(),
@@ -118,7 +118,7 @@ class LiteLLMMCPServer {
     // Handle tool calls
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
-      
+
       try {
         // Check if it's a registered command
         if (this.commands.has(name)) {
@@ -130,10 +130,10 @@ class LiteLLMMCPServer {
         switch (name) {
           case 'llm_create_agent_prompt':
             return await this.createAgentPrompt(args);
-          
+
           case 'llm_list_models':
             return await this.listModels(args);
-          
+
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -183,7 +183,7 @@ class LiteLLMMCPServer {
     };
 
     const roleConfig = rolePrompts[agent_role] || rolePrompts.general;
-    
+
     const prompt = {
       system_prompt: roleConfig.system,
       user_prompt: `${roleConfig.prefix}\n\n${task_description}${context ? `\n\nAdditional context:\n${context}` : ''}`,
