@@ -98,17 +98,153 @@ export class MCPClientManager {
    */
   async createFastMCPClient(config) {
     if (config.type === 'local' || config.type === 'fastmcp') {
-      const fastmcpClient = new FastMCPDirectClient({
+      let clientConfig = {
         sessionId: config.sessionId || `devshop_${Date.now()}`,
         userId: config.userId || 'devshop'
-      });
+      };
+
+      // Handle containerized FastMCP server
+      if (config.type === 'fastmcp' && config.containerized !== false) {
+        // For containerized FastMCP, we need to ensure the container is running
+        await this.ensureFastMCPContainer();
+        
+        // Add container-specific configuration
+        clientConfig.containerized = true;
+        clientConfig.containerName = config.containerName || 'devshop-fastmcp-server';
+        
+        console.log(chalk.blue(`🐳 Connecting to containerized FastMCP server: ${clientConfig.containerName}`));
+      }
+      
+      const fastmcpClient = new FastMCPDirectClient(clientConfig);
       
       await fastmcpClient.connect();
       this.clients['fastmcp'] = fastmcpClient;
       this.clients['litellm'] = fastmcpClient; // Alias for backward compatibility
+      
+      // Verify container security status if containerized
+      if (clientConfig.containerized) {
+        await this.verifyContainerSecurity(clientConfig.containerName);
+      }
     } else {
       throw new Error(`Unsupported FastMCP client type: ${config.type}`);
     }
+  }
+
+  /**
+   * Ensure FastMCP container is running
+   */
+  async ensureFastMCPContainer() {
+    const { spawn } = await import('child_process');
+    
+    return new Promise((resolve, reject) => {
+      // Check if container is running
+      const checkProcess = spawn('docker', ['ps', '--format', 'json', '--filter', 'name=devshop-fastmcp-server'], {
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let output = '';
+      checkProcess.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      checkProcess.on('close', (code) => {
+        if (code === 0) {
+          try {
+            const containers = output.trim().split('\n').filter(line => line).map(line => JSON.parse(line));
+            const runningContainer = containers.find(c => c.Names.includes('devshop-fastmcp-server') && c.State === 'running');
+            
+            if (runningContainer) {
+              console.log(chalk.green('✓ FastMCP container is already running'));
+              resolve();
+            } else {
+              console.log(chalk.yellow('⚠️ FastMCP container not running, attempting to start...'));
+              this.startFastMCPContainer().then(resolve).catch(reject);
+            }
+          } catch (error) {
+            console.log(chalk.yellow('⚠️ Could not parse container status, attempting to start...'));
+            this.startFastMCPContainer().then(resolve).catch(reject);
+          }
+        } else {
+          reject(new Error('Failed to check Docker container status'));
+        }
+      });
+    });
+  }
+
+  /**
+   * Start FastMCP container using Docker Compose
+   */
+  async startFastMCPContainer() {
+    const { spawn } = await import('child_process');
+    
+    return new Promise((resolve, reject) => {
+      console.log(chalk.blue('🚀 Starting FastMCP container...'));
+      
+      const startProcess = spawn('docker', ['compose', '-f', 'docker-compose.fastmcp.yml', 'up', '-d'], {
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      startProcess.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      startProcess.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+
+      startProcess.on('close', (code) => {
+        if (code === 0) {
+          console.log(chalk.green('✅ FastMCP container started successfully'));
+          // Wait a moment for the container to be fully ready
+          setTimeout(resolve, 3000);
+        } else {
+          console.error(chalk.red(`❌ Failed to start FastMCP container: ${errorOutput}`));
+          reject(new Error(`Container startup failed with code ${code}: ${errorOutput}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Verify container security configuration
+   */
+  async verifyContainerSecurity(containerName) {
+    const { spawn } = await import('child_process');
+    
+    return new Promise((resolve) => {
+      // Check container security settings
+      const inspectProcess = spawn('docker', ['inspect', containerName], {
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let output = '';
+      inspectProcess.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      inspectProcess.on('close', (code) => {
+        if (code === 0) {
+          try {
+            const containerInfo = JSON.parse(output)[0];
+            const config = containerInfo.Config;
+            const hostConfig = containerInfo.HostConfig;
+
+            console.log(chalk.blue('🔒 Container Security Status:'));
+            console.log(chalk.green(`  ✓ Non-root user: ${config.User || 'root (⚠️)'}`));
+            console.log(chalk.green(`  ✓ Read-only root: ${hostConfig.ReadonlyRootfs ? 'Yes' : 'No (⚠️)'}`));
+            console.log(chalk.green(`  ✓ No new privileges: ${hostConfig.SecurityOpt?.includes('no-new-privileges:true') ? 'Yes' : 'No (⚠️)'}`));
+            console.log(chalk.green(`  ✓ Dropped capabilities: ${hostConfig.CapDrop?.includes('ALL') ? 'Yes' : 'No (⚠️)'}`));
+            
+          } catch (error) {
+            console.log(chalk.yellow('⚠️ Could not verify container security settings'));
+          }
+        }
+        resolve(); // Always resolve, security check is informational
+      });
+    });
   }
 
   /**

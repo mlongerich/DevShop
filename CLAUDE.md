@@ -91,6 +91,14 @@ npm run github-server           # Start GitHub MCP server
 npm run github-server:stop      # Stop GitHub MCP server
 ```
 
+### Container Security Management
+```bash
+npm run fastmcp:container       # Start secure FastMCP container
+npm run fastmcp:container:stop  # Stop containerized FastMCP server
+npm run fastmcp:container:logs  # Monitor container logs
+npm run test:security           # Test container security configuration
+```
+
 ## Key Files to Understand
 
 ### Main Orchestrator
@@ -127,6 +135,13 @@ npm run github-server:stop      # Stop GitHub MCP server
 19. `utils/state-manager.js` - JSON file-based state management
 20. `config/default.json` - Configuration template with multi-provider settings
 21. `config/fastmcp.json` - **FastMCP configuration (recommended)** - Enhanced session features
+
+### Container Security Files
+22. `servers/Dockerfile.fastmcp` - **Security-hardened FastMCP container** - Multi-stage build with security
+23. `docker-compose.fastmcp.yml` - **Container orchestration** - Security policies and resource limits
+24. `scripts/start-fastmcp-server.sh` - **Secure container startup** - Docker secrets and validation
+25. `test-container-security.js` - **Security test suite** - Container security validation
+26. `CONTAINER_SECURITY_GUIDE.md` - **Security documentation** - Complete containerization guide
 
 ## Design Patterns Applied
 
@@ -172,6 +187,8 @@ npm run github-server:stop      # Stop GitHub MCP server
 - **Integration Tests**: Test command workflows end-to-end
 - **Provider Tests**: Test each LLM provider integration
 - **System Tests**: Run `npm test --full` after changes
+- **Container Security Tests**: Run `npm run test:security` to validate container hardening
+- **FastMCP Tests**: Use `npm run test:fastmcp:quick` for FastMCP validation
 
 ### Code Quality
 - **Follow Patterns**: Use existing design patterns consistently

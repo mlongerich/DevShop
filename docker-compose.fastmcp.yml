@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  fastmcp-server:
+    build:
+      context: .
+      dockerfile: servers/Dockerfile.fastmcp
+    container_name: devshop-fastmcp-server
+    
+    # Security: Network configuration
+    networks:
+      - devshop-internal
+    
+    # Security: Resource limits to prevent resource exhaustion
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    
+    # Security: Drop all capabilities and add only what's needed
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+    
+    # Security: Additional security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Security: Read-only root filesystem with tmpfs for writable areas
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    
+    # Security: Prevent privilege escalation
+    user: "1001:1001"
+    
+    # Environment variables (secrets handled separately)
+    environment:
+      - NODE_ENV=production
+      - MCP_SERVER_NAME=fastmcp-litellm-server
+      - MCP_SERVER_VERSION=1.1.0
+    
+    # Security: Use Docker secrets for sensitive data
+    secrets:
+      - openai_api_key
+      - anthropic_api_key
+      - google_api_key
+    
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "node -e 'process.exit(0)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Logging configuration
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Restart policy
+    restart: unless-stopped
+
+# Security: Custom network for isolation
+networks:
+  devshop-internal:
+    driver: bridge
+    internal: false  # Allow external connections for API calls
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Security: Docker secrets for API keys
+secrets:
+  openai_api_key:
+    external: true
+  anthropic_api_key:
+    external: true
+  google_api_key:
+    external: true

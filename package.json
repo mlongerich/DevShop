@@ -16,7 +16,11 @@
     "github-server:stop": "docker stop devshop-github-server 2>/dev/null || true",
     "test:fastmcp": "node test-fastmcp-integration.js",
     "test:fastmcp:quick": "node test-fastmcp-integration.js quick",
-    "fastmcp:server": "node servers/fastmcp-litellm-server-fixed.js"
+    "fastmcp:server": "node servers/fastmcp-litellm-server-fixed.js",
+    "fastmcp:container": "bash scripts/start-fastmcp-server.sh",
+    "fastmcp:container:stop": "docker compose -f docker-compose.fastmcp.yml down",
+    "fastmcp:container:logs": "docker compose -f docker-compose.fastmcp.yml logs -f",
+    "test:security": "node test-container-security.js"
   },
   "bin": {
     "devshop": "./client/devshop-mcp.js"

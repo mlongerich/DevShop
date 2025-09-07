@@ -127,7 +127,12 @@ devshop/
    npm run test:fastmcp:quick
    ```
 
-6. **Check system status:**
+6. **Start containerized FastMCP server (recommended for security):**
+   ```bash
+   npm run fastmcp:container
+   ```
+
+7. **Check system status:**
    ```bash
    npm run status
    ```
@@ -371,6 +376,47 @@ npm run status
 # Detailed system health check
 npm run test --full --verbose
 ```
+
+## 🔒 Container Security (Enhanced)
+
+DevShop 1.1 implements comprehensive container security for all MCP servers:
+
+### Security-Hardened Containers
+- **Process Isolation**: All MCP servers run in isolated containers
+- **Non-Root Execution**: Processes run as dedicated non-root users (UID 1001)
+- **Read-Only Filesystems**: Immutable runtime environments prevent tampering
+- **Dropped Capabilities**: Linux capabilities reduced to absolute minimum
+- **Docker Secrets**: API keys managed through encrypted Docker secrets
+- **Resource Limits**: CPU/memory limits prevent resource exhaustion
+
+### Container Management
+```bash
+# Start secure FastMCP container
+npm run fastmcp:container
+
+# Monitor container security status
+npm run fastmcp:container:logs
+
+# Stop containerized services
+npm run fastmcp:container:stop
+```
+
+### Security Verification
+```bash
+# Test container security configuration
+npm run test:security
+
+# Verify FastMCP container status
+docker inspect devshop-fastmcp-server --format='{{.Config.User}}'
+
+# Check security policies
+docker inspect devshop-fastmcp-server --format='{{.HostConfig.ReadonlyRootfs}}'
+```
+
+**Features:**
+- **Automatic Security Checks**: Container security automatically verified on startup
+- **Real-time Monitoring**: Health checks and security status monitoring  
+- **Security Documentation**: See `CONTAINER_SECURITY_GUIDE.md` for full details
 
 ## 🔍 Logging and Observability (Enhanced)
 

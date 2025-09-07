@@ -1,5 +1,9 @@
 # FastMCP Deployment Guide - DevShop 1.1
 
+## 🔒 **RECOMMENDED: Containerized Security Deployment**
+
+For production environments, DevShop now provides a **security-hardened containerized deployment** that is the recommended approach for all FastMCP servers.
+
 ## 🎉 Migration Status: READY FOR PRODUCTION
 
 The FastMCP migration is **complete and tested**. DevShop 1.1 now features:
@@ -7,10 +11,34 @@ The FastMCP migration is **complete and tested**. DevShop 1.1 now features:
 - **Enhanced session management** and error handling
 - **Complete backward compatibility** with existing workflows
 - **Production-ready FastMCP implementation**
+- **🆕 Security-hardened containerization** for enterprise deployment
 
 ## 🚀 Quick Start
 
-### Option 1: Use FastMCP Immediately (Recommended)
+### Option 1: Containerized FastMCP (Recommended for Production)
+
+**Security-first deployment with comprehensive hardening:**
+
+```bash
+# Start secure containerized FastMCP server
+npm run fastmcp:container
+
+# Verify security configuration
+npm run test:security
+
+# Monitor containerized server
+npm run fastmcp:container:logs
+```
+
+**Security Features:**
+- **Process Isolation**: Runs in isolated container environment
+- **Non-Root Execution**: UID 1001, no root privileges
+- **Read-Only Filesystem**: Immutable runtime environment
+- **Docker Secrets**: Encrypted API key management
+- **Resource Limits**: 512MB memory, 0.5 CPU cores
+- **Capability Dropping**: Minimal Linux capabilities
+
+### Option 2: Local FastMCP (Development Only)
 ```bash
 # Test FastMCP server
 npm run test:fastmcp:quick

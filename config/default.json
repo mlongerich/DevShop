@@ -46,6 +46,15 @@
       "path": "servers/fastmcp-litellm-server-fixed.js",
       "timeout_ms": 60000,
       "enabled": true,
+      "containerized": true,
+      "containerName": "devshop-fastmcp-server",
+      "security": {
+        "isolation": true,
+        "read_only_root": true,
+        "non_root_user": true,
+        "dropped_capabilities": true,
+        "docker_secrets": true
+      },
       "features": {
         "session_management": true,
         "type_safety": true,
