@@ -41,7 +41,7 @@ COPY --from=builder --chown=mcpuser:mcpuser /app/node_modules ./node_modules
 COPY --from=builder --chown=mcpuser:mcpuser /app/package*.json ./
 
 # Copy server files with proper ownership
-COPY --chown=mcpuser:mcpuser servers/fastmcp-litellm-server-fixed.js ./
+COPY --chown=mcpuser:mcpuser servers/fastmcp-litellm-server.js ./
 COPY --chown=mcpuser:mcpuser servers/providers/ ./providers/
 COPY --chown=mcpuser:mcpuser servers/decorators/ ./decorators/
 COPY --chown=mcpuser:mcpuser servers/config/ ./config/
@@ -79,4 +79,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 ENTRYPOINT ["dumb-init", "--"]
 
 # Run the FastMCP server
-CMD ["node", "fastmcp-litellm-server-fixed.js"]
+CMD ["node", "fastmcp-litellm-server.js"]

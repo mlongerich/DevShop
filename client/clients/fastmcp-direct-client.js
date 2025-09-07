@@ -29,7 +29,7 @@ class FastMCPDirectClient extends EventEmitter {
       throw new Error('Already connected');
     }
 
-    const serverPath = path.join(__dirname, '..', '..', 'servers', 'fastmcp-litellm-server-fixed.js');
+    const serverPath = path.join(__dirname, '..', '..', 'servers', 'fastmcp-litellm-server.js');
     
     this.process = spawn('node', [serverPath], {
       stdio: ['pipe', 'pipe', 'pipe']

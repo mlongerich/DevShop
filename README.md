@@ -39,12 +39,10 @@ devshop/
 │   │   └── developer-agent.js      # Developer agent
 │   ├── clients/                    # Direct MCP Clients
 │   │   ├── github-direct-client.js # GitHub MCP integration
-│   │   ├── fastmcp-direct-client.js # FastMCP client (primary)
-│   │   └── litellm-direct-client.js # Legacy MCP SDK client
+│   │   └── fastmcp-direct-client.js # FastMCP client
 │   └── setup.js                    # Legacy setup (maintained for compatibility)
 ├── servers/
-│   ├── fastmcp-litellm-server-fixed.js # Main FastMCP server (production)
-│   ├── litellm-server.js           # Legacy MCP SDK server (fallback)
+│   ├── fastmcp-litellm-server.js # FastMCP LiteLLM server
 │   ├── providers/                  # Strategy Pattern for LLM Providers
 │   │   ├── base-provider.js        # Abstract provider interface
 │   │   ├── openai-provider.js      # OpenAI implementation

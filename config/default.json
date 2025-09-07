@@ -43,7 +43,7 @@
     },
     "fastmcp": {
       "type": "fastmcp",
-      "path": "servers/fastmcp-litellm-server-fixed.js",
+      "path": "servers/fastmcp-litellm-server.js",
       "timeout_ms": 60000,
       "enabled": true,
       "containerized": true,

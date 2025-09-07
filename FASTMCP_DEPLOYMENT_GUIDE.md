@@ -209,7 +209,7 @@ npm run fastmcp:server      # Start FastMCP server directly
 **"FastMCP server connection failed"**
 ```bash
 # Verify server starts independently
-node servers/fastmcp-litellm-server-fixed.js
+node servers/fastmcp-litellm-server.js
 
 # Check for port conflicts or permission issues
 npm run test:fastmcp:quick

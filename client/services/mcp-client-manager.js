@@ -1,5 +1,4 @@
 import GitHubDirectClient from '../clients/github-direct-client.js';
-import LiteLLMDirectClient from '../clients/litellm-direct-client.js';
 import { FastMCPDirectClient } from '../clients/fastmcp-direct-client.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -48,9 +47,6 @@ export class MCPClientManager {
         break;
       
       case 'litellm':
-        await this.createLiteLLMClient(config);
-        break;
-
       case 'fastmcp':
       case 'fastmcp-litellm':
         await this.createFastMCPClient(config);
@@ -80,18 +76,6 @@ export class MCPClientManager {
     }
   }
 
-  /**
-   * Create LiteLLM direct client
-   */
-  async createLiteLLMClient(config) {
-    if (config.type === 'local') {
-      const litellmClient = new LiteLLMDirectClient();
-      await litellmClient.connect();
-      this.clients['litellm'] = litellmClient;
-    } else {
-      throw new Error(`Unsupported LiteLLM client type: ${config.type}`);
-    }
-  }
 
   /**
    * Create FastMCP direct client
@@ -296,7 +280,7 @@ export class MCPClientManager {
     try {
       let result;
       
-      if (client instanceof GitHubDirectClient || client instanceof LiteLLMDirectClient) {
+      if (client instanceof GitHubDirectClient || client instanceof FastMCPDirectClient) {
         // Direct clients have their own callTool method
         result = await client.callTool(toolName, args);
       } else {
@@ -340,7 +324,7 @@ export class MCPClientManager {
     }
 
     try {
-      if (client instanceof GitHubDirectClient || client instanceof LiteLLMDirectClient) {
+      if (client instanceof GitHubDirectClient || client instanceof FastMCPDirectClient) {
         return await client.listTools();
       } else {
         const result = await client.request({ method: 'tools/list' }, null);
@@ -386,7 +370,7 @@ export class MCPClientManager {
   async cleanup() {
     for (const [name, client] of Object.entries(this.clients)) {
       try {
-        if (client instanceof GitHubDirectClient || client instanceof LiteLLMDirectClient) {
+        if (client instanceof GitHubDirectClient || client instanceof FastMCPDirectClient) {
           await client.close();
         } else if (client && typeof client.close === 'function') {
           await client.close();

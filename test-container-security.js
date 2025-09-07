@@ -65,7 +65,7 @@ async function testContainerSecurity() {
       name: 'Process Tree Isolation',
       command: 'docker',
       args: ['exec', 'devshop-fastmcp-server', 'ps', 'aux'],
-      expectedPattern: /node.*fastmcp-litellm-server-fixed\.js/,
+      expectedPattern: /node.*fastmcp-litellm-server\.js/,
       description: 'Verify only FastMCP process is running in container'
     }
   ];

@@ -7,7 +7,7 @@
 DevShop 1.1 has successfully migrated to **FastMCP framework** as the primary LLM server implementation:
 
 **Key Migration Results:**
-- **20% Code Reduction**: `fastmcp-litellm-server-fixed.js` (208 lines vs 262 lines legacy)
+- **20% Code Reduction**: `fastmcp-litellm-server.js` (208 lines vs 262 lines legacy)
 - **Enhanced Features**: Session management, user tracking, improved error handling
 - **Type Safety**: Zod schema validation for all tool parameters
 - **Backward Compatibility**: Legacy MCP SDK server maintained as fallback
@@ -57,7 +57,7 @@ DevShop 1.1 now features a complete provider architecture using the Strategy pat
    - `provider-factory.js` - Factory pattern for provider creation
    - `provider-manager.js` - Provider lifecycle management
 
-2. **Server Architecture**: `servers/fastmcp-litellm-server-fixed.js` (208 lines, FastMCP framework)
+2. **Server Architecture**: `servers/fastmcp-litellm-server.js` (208 lines, FastMCP framework)
    - Multi-provider support with clean separation
    - Enhanced session management and user tracking
    - Updated 2025 model pricing for GPT-5, Claude 3.5, Gemini 2.5

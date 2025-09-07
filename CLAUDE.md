@@ -41,8 +41,7 @@ DevShop 1.1 is a completely refactored self-improving development shop using MCP
 - `servers/providers/provider-manager.js` - Provider lifecycle management
 
 ### Server Architecture
-- `servers/litellm-server.js` - Main LiteLLM server (refactored, 262 lines)
-- `servers/commands/` - Command pattern for server operations
+- `servers/fastmcp-litellm-server.js` - FastMCP LiteLLM server (production, 282 lines)
 - `servers/decorators/` - Usage tracking decorator pattern
 - `servers/config/` - Centralized configuration management
 
@@ -121,27 +120,25 @@ npm run test:security           # Test container security configuration
 11. `client/agents/developer-agent.js` - Developer agent with code generation
 
 ### MCP Client Layer
-12. `client/clients/fastmcp-direct-client.js` - **FastMCP client (primary)** - Enhanced session management
+12. `client/clients/fastmcp-direct-client.js` - **FastMCP client** - Enhanced session management
 13. `client/clients/github-direct-client.js` - Direct GitHub MCP client (bypasses SDK issues)
-14. `client/clients/litellm-direct-client.js` - Legacy MCP SDK client (fallback)
 
 ### Provider Architecture
 15. `servers/providers/provider-factory.js` - Strategy pattern for LLM provider creation
-16. `servers/fastmcp-litellm-server-fixed.js` - **FastMCP server (primary)** - 20% code reduction
-17. `servers/litellm-server.js` - Legacy MCP SDK server (fallback)
+16. `servers/fastmcp-litellm-server.js` - **FastMCP server** - Modern FastMCP implementation
 
 ### Utilities and Configuration
-18. `utils/logger.js` - File-based logging utility functions
-19. `utils/state-manager.js` - JSON file-based state management
-20. `config/default.json` - Configuration template with multi-provider settings
-21. `config/fastmcp.json` - **FastMCP configuration (recommended)** - Enhanced session features
+17. `utils/logger.js` - File-based logging utility functions
+18. `utils/state-manager.js` - JSON file-based state management
+19. `config/default.json` - Configuration template with multi-provider settings
+20. `config/fastmcp.json` - **FastMCP configuration (recommended)** - Enhanced session features
 
 ### Container Security Files
-22. `servers/Dockerfile.fastmcp` - **Security-hardened FastMCP container** - Multi-stage build with security
-23. `docker-compose.fastmcp.yml` - **Container orchestration** - Security policies and resource limits
-24. `scripts/start-fastmcp-server.sh` - **Secure container startup** - Docker secrets and validation
-25. `test-container-security.js` - **Security test suite** - Container security validation
-26. `CONTAINER_SECURITY_GUIDE.md` - **Security documentation** - Complete containerization guide
+21. `servers/Dockerfile.fastmcp` - **Security-hardened FastMCP container** - Multi-stage build with security
+22. `docker-compose.fastmcp.yml` - **Container orchestration** - Security policies and resource limits
+23. `scripts/start-fastmcp-server.sh` - **Secure container startup** - Docker secrets and validation
+24. `test-container-security.js` - **Security test suite** - Container security validation
+25. `CONTAINER_SECURITY_GUIDE.md` - **Security documentation** - Complete containerization guide
 
 ## Design Patterns Applied
 

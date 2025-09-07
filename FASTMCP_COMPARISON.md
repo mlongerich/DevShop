@@ -5,7 +5,7 @@ This document compares the current MCP SDK implementation with the new FastMCP i
 
 ## Code Complexity Comparison
 
-### Current MCP SDK Implementation (`servers/litellm-server.js`)
+### Current MCP SDK Implementation (`servers/fastmcp-litellm-server.js (legacy removed)`)
 - **Lines of Code**: 262 lines
 - **Manual Tool Registration**: Requires explicit handler setup
 - **Boilerplate**: Extensive manual MCP protocol handling
