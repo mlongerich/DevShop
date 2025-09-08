@@ -696,7 +696,23 @@ export class BaseAgent {
 
       // Handle different LLM response formats with robust parsing
       let response;
-      if (completion && completion.content && Array.isArray(completion.content) && completion.content[0]) {
+      
+      // Check if we have the nested FastMCP structure: { result: { content: [{ text: "..." }] } }
+      if (completion && completion.result && completion.result.content && Array.isArray(completion.result.content) && completion.result.content[0]) {
+        // FastMCP nested format: { result: { content: [{ text: "..." }] } }
+        try {
+          const parsed = JSON.parse(completion.result.content[0].text);
+          // Extract the response field from the nested JSON
+          if (parsed.response) {
+            response = { content: parsed.response, usage: parsed.usage };
+          } else {
+            response = { content: parsed, usage: parsed.usage };
+          }
+        } catch (error) {
+          // If JSON parsing fails, use the text directly
+          response = { content: completion.result.content[0].text };
+        }
+      } else if (completion && completion.content && Array.isArray(completion.content) && completion.content[0]) {
         // MCP format: { content: [{ text: "..." }] }
         try {
           const parsed = JSON.parse(completion.content[0].text);
@@ -736,6 +752,7 @@ export class BaseAgent {
         }
       } else {
         // Fallback: use the entire completion
+        console.log(chalk.yellow('⚠️ Using fallback parsing - unexpected response structure'));
         response = { 
           content: JSON.stringify(completion, null, 2),
           usage: completion.usage || {}
