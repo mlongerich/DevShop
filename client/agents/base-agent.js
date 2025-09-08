@@ -1,3 +1,5 @@
+import chalk from 'chalk';
+
 /**
  * Base agent interface for DevShop AI agents
  * Defines the contract that all agent implementations must follow
@@ -68,6 +70,176 @@ export class BaseAgent {
   }
 
   /**
+   * Discover available tools from an MCP server
+   * @param {string} serverName - MCP server name
+   * @returns {Promise<Array>} List of available tools
+   */
+  async discoverTools(serverName) {
+    if (!this.mcpClientManager) {
+      throw new Error('MCP client manager not available');
+    }
+    
+    // Cache tools to avoid repeated discovery
+    if (!this.toolCache) {
+      this.toolCache = {};
+    }
+    
+    if (this.toolCache[serverName]) {
+      return this.toolCache[serverName];
+    }
+    
+    try {
+      const result = await this.mcpClientManager.listTools(serverName);
+      
+      // Handle different response formats
+      let tools = [];
+      if (Array.isArray(result)) {
+        tools = result;
+      } else if (result && result.tools && Array.isArray(result.tools)) {
+        tools = result.tools;
+      } else if (result && result.content && Array.isArray(result.content)) {
+        tools = result.content;
+      } else {
+        console.warn(`Unexpected listTools response format from ${serverName}:`, result);
+        tools = [];
+      }
+      
+      this.toolCache[serverName] = tools;
+      return tools;
+    } catch (error) {
+      throw new Error(`Failed to discover tools from ${serverName}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Find tools by capability/purpose rather than exact name
+   * @param {string} serverName - MCP server name
+   * @param {string|Array} capabilities - Capability keywords to match
+   * @returns {Promise<Array>} Matching tools
+   */
+  async findToolsByCapability(serverName, capabilities) {
+    const tools = await this.discoverTools(serverName);
+    const searchTerms = Array.isArray(capabilities) ? capabilities : [capabilities];
+    
+    return tools.filter(tool => {
+      const toolText = `${tool.name} ${tool.description || ''}`.toLowerCase();
+      return searchTerms.some(term => 
+        toolText.includes(term.toLowerCase()) ||
+        tool.name.toLowerCase().includes(term.toLowerCase())
+      );
+    });
+  }
+
+  /**
+   * Find the best tool for a specific capability
+   * @param {string} serverName - MCP server name
+   * @param {string|Array} capabilities - Capability keywords to match
+   * @returns {Promise<Object|null>} Best matching tool or null
+   */
+  async findBestToolForCapability(serverName, capabilities) {
+    const matchingTools = await this.findToolsByCapability(serverName, capabilities);
+    
+    if (matchingTools.length === 0) {
+      return null;
+    }
+    
+    // Return the first match for now
+    // Could implement more sophisticated scoring in the future
+    return matchingTools[0];
+  }
+
+  /**
+   * Find tools for file/repository analysis
+   * @param {string} serverName - MCP server name (typically 'github')
+   * @returns {Promise<Object|null>} Best tool for repository analysis
+   */
+  async findFileAnalysisTools(serverName) {
+    const capabilities = [
+      ['contents', 'file_contents', 'get_contents'],
+      ['files', 'list_files', 'tree'],
+      ['repository', 'repo_info', 'get_repository'],
+      ['commits', 'history', 'list_commits'],
+      ['branches', 'list_branches']
+    ];
+
+    for (const capabilityGroup of capabilities) {
+      const tool = await this.findBestToolForCapability(serverName, capabilityGroup);
+      if (tool) {
+        return tool;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Find tools for GitHub issue creation
+   * @param {string} serverName - MCP server name (typically 'github')
+   * @returns {Promise<Object|null>} Best tool for issue creation
+   */
+  async findIssueCreationTools(serverName) {
+    const capabilities = [
+      ['create_issue', 'issue_create'],
+      ['create', 'issue'],
+      ['new_issue', 'add_issue']
+    ];
+
+    for (const capabilityGroup of capabilities) {
+      const tool = await this.findBestToolForCapability(serverName, capabilityGroup);
+      if (tool) {
+        return tool;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Find tools for LLM operations
+   * @param {string} serverName - MCP server name (typically 'litellm' or 'fastmcp')
+   * @param {string} operation - Specific operation: 'chat', 'prompt', 'usage'
+   * @returns {Promise<Object|null>} Best tool for the LLM operation
+   */
+  async findLLMTools(serverName, operation) {
+    let capabilities = [];
+    
+    switch (operation) {
+      case 'chat':
+        capabilities = [
+          ['chat_completion', 'llm_chat'],
+          ['completion', 'chat'],
+          ['generate', 'llm']
+        ];
+        break;
+      case 'prompt':
+        capabilities = [
+          ['agent_prompt', 'create_prompt'],
+          ['prompt', 'system_prompt'],
+          ['template', 'prompt_template']
+        ];
+        break;
+      case 'usage':
+        capabilities = [
+          ['get_usage', 'usage_stats'],
+          ['usage', 'stats'],
+          ['cost', 'billing']
+        ];
+        break;
+      default:
+        return null;
+    }
+
+    for (const capabilityGroup of capabilities) {
+      const tool = await this.findBestToolForCapability(serverName, capabilityGroup);
+      if (tool) {
+        return tool;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
    * Common helper method for logging interactions
    * @param {string} type - Interaction type
    * @param {string} content - Interaction content
@@ -98,6 +270,463 @@ export class BaseAgent {
       ...context,
       agent: this.getName()
     });
+  }
+
+  /**
+   * Ensure context has required validation methods
+   * Converts plain objects to AgentContext-like objects with validate() method
+   * @param {Object} context - Plain object or AgentContext instance
+   * @returns {Object} Context object with validate() method
+   */
+  ensureContextMethods(context) {
+    // If already has validate method, return as-is
+    if (context && typeof context.validate === 'function') {
+      return context;
+    }
+
+    // Create a context-like object with validate method
+    const enhancedContext = { ...context };
+    
+    enhancedContext.validate = function(requiredParams = []) {
+      const missing = [];
+      
+      for (const param of requiredParams) {
+        if (this[param] === undefined || this[param] === null) {
+          missing.push(param);
+        }
+      }
+
+      if (missing.length > 0) {
+        throw new Error(`Missing required context parameters: ${missing.join(', ')}`);
+      }
+
+      return true;
+    };
+
+    enhancedContext.getRepository = function() {
+      if (!this.repoOwner || !this.repoName) {
+        throw new Error('Repository information not available in context');
+      }
+      return `${this.repoOwner}/${this.repoName}`;
+    };
+
+    return enhancedContext;
+  }
+
+  /**
+   * Analyze repository structure using dynamic tool discovery
+   * @param {Object} context - Enhanced context with repoOwner, repoName
+   * @param {Array} toolPriorities - Optional priority list for tool selection
+   * @returns {Promise<Object>} Repository analysis result
+   */
+  async analyzeRepository(context, toolPriorities = []) {
+    console.log(chalk.blue('📁 Analyzing repository structure...'));
+    
+    try {
+      // Discover available GitHub tools dynamically
+      console.log(chalk.gray('🔍 Discovering available GitHub tools...'));
+      const availableTools = await this.discoverTools('github');
+      
+      if (availableTools.length === 0) {
+        console.log(chalk.yellow('⚠️ No tools discovered from GitHub MCP server. Using fallback analysis.'));
+        return {
+          structure: `Repository: ${context.repoOwner}/${context.repoName}\nAnalysis: Manual repository analysis needed - GitHub MCP server tools not available.`,
+          tool_used: 'fallback',
+          analyzed_at: new Date().toISOString()
+        };
+      }
+      
+      // Use new capability-based tool discovery
+      const bestTool = await this.findFileAnalysisTools('github');
+      
+      if (!bestTool) {
+        // Final fallback: use any available tool
+        if (availableTools.length > 0) {
+          console.log(chalk.yellow(`⚠️ Using first available tool: ${availableTools[0].name}`));
+          return await this.analyzeRepositoryWithTool(context, availableTools[0]);
+        }
+        throw new Error('No suitable repository analysis tools found');
+      }
+      
+      console.log(chalk.gray(`Using tool: ${bestTool.name}`));
+      return await this.analyzeRepositoryWithTool(context, bestTool);
+      
+    } catch (error) {
+      throw new Error(`Failed to analyze repository: ${error.message}`);
+    }
+  }
+
+  /**
+   * Analyze repository using a specific discovered tool
+   * @param {Object} context - Enhanced context
+   * @param {Object} tool - Tool object from discovery
+   * @returns {Promise<Object>} Analysis result
+   */
+  async analyzeRepositoryWithTool(context, tool) {
+    try {
+      // Prepare arguments based on common GitHub API patterns
+      const args = {
+        owner: context.repoOwner,
+        repo: context.repoName
+      };
+      
+      // Add token if available (check for config in subclasses)
+      if (this.config?.github?.token) {
+        args.token = this.config.github.token;
+      }
+      
+      // Add tool-specific parameters based on name patterns and capabilities
+      if (tool.name.includes('contents') || tool.name.includes('file')) {
+        // For file contents tools, try multiple approaches
+        try {
+          // First try without path (to get repository root contents)
+          console.log(chalk.gray(`Calling ${tool.name}...`));
+          const result = await this.callMCPTool('github', tool.name, args);
+          return this.formatRepositoryAnalysisResult(result, tool.name);
+        } catch (error) {
+          // If that fails and error mentions path, try with empty path
+          if (error.message.includes('path') || error.message.includes('required parameter')) {
+            console.log(chalk.gray(`Retrying ${tool.name} with path parameter...`));
+            args.path = '';
+            const result = await this.callMCPTool('github', tool.name, args);
+            return this.formatRepositoryAnalysisResult(result, tool.name);
+          }
+          throw error;
+        }
+      } else if (tool.name.includes('tree')) {
+        args.path = '';
+        args.recursive = true;
+      } else if (tool.name.includes('files') || tool.name.includes('list')) {
+        // For listing tools, may need path parameter
+        args.path = '';
+      }
+      
+      console.log(chalk.gray(`Calling ${tool.name}...`));
+      
+      const result = await this.callMCPTool('github', tool.name, args);
+      return this.formatRepositoryAnalysisResult(result, tool.name);
+      
+    } catch (error) {
+      throw new Error(`Failed to analyze repository with ${tool.name}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Format repository analysis result from different tool response formats
+   * @param {Object} result - Raw tool result
+   * @param {string} toolName - Name of the tool used
+   * @returns {Object} Formatted analysis result
+   */
+  formatRepositoryAnalysisResult(result, toolName) {
+    let structure = 'Repository analysis completed';
+    
+    if (result && result.content && Array.isArray(result.content) && result.content.length > 0) {
+      structure = result.content.map(item => item.text || JSON.stringify(item)).join('\n');
+    } else if (result && result.content && result.content.text) {
+      structure = result.content.text;
+    } else if (result && typeof result === 'string') {
+      structure = result;
+    } else if (result && result.data) {
+      structure = JSON.stringify(result.data, null, 2);
+    } else if (result) {
+      // Fallback: stringify the entire result
+      structure = JSON.stringify(result, null, 2);
+    } else {
+      structure = `No data returned from ${toolName} for repository analysis`;
+    }
+
+    return {
+      structure,
+      tool_used: toolName,
+      analyzed_at: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Create a GitHub issue using dynamic tool discovery
+   * @param {Object} context - Enhanced context with repoOwner, repoName
+   * @param {string} title - Issue title
+   * @param {string} body - Issue body content
+   * @param {Array} labels - Optional array of label strings
+   * @returns {Promise<Object>} Issue creation result
+   */
+  async createRepositoryIssue(context, title, body, labels = []) {
+    console.log(chalk.blue('🎫 Creating GitHub issue...'));
+    
+    try {
+      // Find the best tool for issue creation
+      const issueTool = await this.findIssueCreationTools('github');
+      
+      if (!issueTool) {
+        throw new Error('No GitHub issue creation tools found');
+      }
+      
+      console.log(chalk.gray(`Using tool: ${issueTool.name}`));
+      
+      // Prepare arguments for issue creation
+      const args = {
+        owner: context.repoOwner,
+        repo: context.repoName,
+        title: title,
+        body: body
+      };
+      
+      // Add optional parameters
+      if (labels.length > 0) {
+        args.labels = labels;
+      }
+      
+      // Add token if available
+      if (this.config?.github?.token) {
+        args.token = this.config.github.token;
+      }
+      
+      const result = await this.callMCPTool('github', issueTool.name, args);
+      
+      console.log(chalk.green('✅ GitHub issue created successfully'));
+      
+      return {
+        title: title,
+        tool_used: issueTool.name,
+        result: result,
+        created_at: new Date().toISOString()
+      };
+      
+    } catch (error) {
+      console.log(chalk.yellow(`⚠️ Could not create GitHub issue: ${error.message}`));
+      return {
+        title: title,
+        error: error.message,
+        created_at: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Generate agent prompt using dynamic tool discovery
+   * @param {string} agentRole - Agent role (ba, developer, reviewer, architect, general)
+   * @param {string} taskDescription - Description of the task
+   * @param {string} context - Optional additional context
+   * @returns {Promise<string>} Generated system prompt
+   */
+  async generateAgentPrompt(agentRole, taskDescription, context = '') {
+    try {
+      // For LLM tools, use known tool names since FastMCP server doesn't expose tools properly  
+      // TODO: Fix FastMCP server tool discovery in the future
+      try {
+        const result = await this.callMCPTool('fastmcp', 'llm_create_agent_prompt', {
+          agent_role: agentRole,
+          task_description: taskDescription,
+          context: context
+        });
+        
+        if (result && result.content && result.content[0]) {
+          const promptData = JSON.parse(result.content[0].text);
+          return promptData.system_prompt;
+        }
+      } catch (llmError) {
+        console.log(chalk.yellow(`⚠️ LLM prompt tool failed: ${llmError.message}`));
+      }
+    } catch (error) {
+      console.log(chalk.yellow(`⚠️ Prompt generation tool failed, using fallback: ${error.message}`));
+    }
+    
+    // Fallback system prompts
+    const fallbackPrompts = {
+      ba: "You are a Business Analyst AI assistant. Your role is to analyze requirements, create detailed specifications, and ensure business objectives are clearly defined. Focus on understanding user needs, identifying edge cases, and creating comprehensive documentation.",
+      developer: "You are a Developer AI assistant. Your role is to write clean, efficient, and well-documented code. Follow best practices, consider edge cases, and ensure code is maintainable and scalable.",
+      reviewer: "You are a Code Reviewer AI assistant. Your role is to review code for quality, security, performance, and adherence to best practices. Provide constructive feedback and suggestions for improvement.",
+      architect: "You are a Software Architect AI assistant. Your role is to design scalable, maintainable systems and make high-level technical decisions. Consider system architecture, design patterns, and long-term maintainability.",
+      general: "You are a helpful AI assistant focused on software development tasks."
+    };
+    
+    return fallbackPrompts[agentRole] || fallbackPrompts.general;
+  }
+
+  /**
+   * Generate LLM response using standardized pattern
+   * @param {string} agentRole - Agent role for logging and model selection
+   * @param {Function|string} systemPromptMethod - Method name or prompt string
+   * @param {string} userContent - User message content
+   * @param {Object} context - Enhanced context
+   * @returns {Promise<Object>} LLM response with robust parsing
+   */
+  async generateLLMResponse(agentRole, systemPromptMethod, userContent, context) {
+    console.log(chalk.blue(`🤖 Generating ${agentRole} response...`));
+
+    try {
+      // Get system prompt
+      let systemPrompt;
+      if (typeof systemPromptMethod === 'function') {
+        systemPrompt = await systemPromptMethod.call(this);
+      } else if (typeof systemPromptMethod === 'string') {
+        systemPrompt = systemPromptMethod;
+      } else {
+        // Fallback system prompt
+        systemPrompt = `You are a ${agentRole} AI assistant. Provide helpful and accurate responses based on the context provided.`;
+      }
+
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userContent }
+      ];
+
+      // For LLM tools, use known tool names since FastMCP server doesn't expose tools properly
+      // TODO: Fix FastMCP server tool discovery in the future
+      const completion = await this.callMCPTool('fastmcp', 'llm_chat_completion', {
+        messages: messages,
+        model: this.config?.models?.[agentRole] || 'claude-3.5-sonnet',
+        api_key: this.config?.llm?.api_key,
+        base_url: this.config?.llm?.base_url,
+        session_id: context.sessionId,
+        agent_role: agentRole
+      });
+
+      // Handle different LLM response formats with robust parsing
+      let response;
+      if (completion && completion.content && Array.isArray(completion.content) && completion.content[0]) {
+        // MCP format: { content: [{ text: "..." }] }
+        try {
+          response = JSON.parse(completion.content[0].text);
+        } catch (error) {
+          // If JSON parsing fails, use the text directly
+          response = { content: completion.content[0].text };
+        }
+      } else if (completion && completion.content && completion.content.text) {
+        // Direct format: { content: { text: "..." } }
+        try {
+          response = JSON.parse(completion.content.text);
+        } catch (error) {
+          response = { content: completion.content.text };
+        }
+      } else if (completion && typeof completion.content === 'string') {
+        // String format: { content: "..." }
+        try {
+          response = JSON.parse(completion.content);
+        } catch (error) {
+          response = { content: completion.content };
+        }
+      } else {
+        // Fallback: use the entire completion
+        response = { 
+          content: JSON.stringify(completion, null, 2),
+          usage: completion.usage || {}
+        };
+      }
+      
+      console.log(chalk.green(`\\n📋 ${agentRole.toUpperCase()} Agent Response:`));
+      console.log(response.content);
+
+      return {
+        content: response.content,
+        usage: response.usage || {},
+        generated_at: new Date().toISOString()
+      };
+      
+    } catch (error) {
+      throw new Error(`Failed to generate ${agentRole} response: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get GitHub issue details using dynamic tool discovery
+   * @param {Object} context - Enhanced context
+   * @param {number} issueNumber - Issue number to fetch
+   * @returns {Promise<Object>} Issue details
+   */
+  async getGitHubIssue(context, issueNumber) {
+    console.log(chalk.blue(`📋 Fetching issue #${issueNumber} details...`));
+    
+    try {
+      // Find tools for getting issue details
+      const issueTools = await this.findToolsByCapability('github', ['get_issue', 'issue']);
+      
+      if (issueTools.length === 0) {
+        throw new Error('No GitHub issue tools found');
+      }
+
+      const tool = issueTools[0];
+      console.log(chalk.gray(`Using tool: ${tool.name}`));
+
+      const args = {
+        owner: context.repoOwner,
+        repo: context.repoName,
+        issue_number: issueNumber
+      };
+
+      // Add token if available
+      if (this.config?.github?.token) {
+        args.token = this.config.github.token;
+      }
+
+      const result = await this.callMCPTool('github', tool.name, args);
+      
+      // Parse the result based on different formats
+      let issueData;
+      if (result && result.content && Array.isArray(result.content) && result.content[0]) {
+        try {
+          issueData = JSON.parse(result.content[0].text);
+        } catch (error) {
+          issueData = result.content[0];
+        }
+      } else if (result && result.content && result.content.text) {
+        try {
+          issueData = JSON.parse(result.content.text);
+        } catch (error) {
+          issueData = result.content;
+        }
+      } else {
+        issueData = result;
+      }
+      
+      return {
+        title: issueData.title || 'Unknown Title',
+        body: issueData.body || 'No description available',
+        state: issueData.state || 'unknown',
+        labels: issueData.labels || [],
+        tool_used: tool.name,
+        fetched_at: new Date().toISOString()
+      };
+      
+    } catch (error) {
+      throw new Error(`Failed to fetch issue details: ${error.message}`);
+    }
+  }
+
+  /**
+   * Log completion and cost information (unified from both agents)
+   * @param {Object} context - Enhanced context
+   */
+  async logCompletion(context) {
+    try {
+      // For LLM tools, use known tool names since FastMCP server doesn't expose tools properly
+      // TODO: Fix FastMCP server tool discovery in the future
+      let usageData = { total_cost: 0, total_tokens: 0 };
+      
+      try {
+        const usage = await this.callMCPTool('fastmcp', 'llm_get_usage', {});
+        // Parse usage data with robust error handling
+        if (usage && usage.content && Array.isArray(usage.content) && usage.content[0]) {
+          try {
+            usageData = JSON.parse(usage.content[0].text);
+          } catch (error) {
+            // Keep default values on parse error
+          }
+        }
+      } catch (usageError) {
+        console.log(chalk.yellow(`⚠️ Usage tracking failed: ${usageError.message}`));
+      }
+      
+      console.log(chalk.gray(`\\n💰 Session cost: $${usageData.total_cost.toFixed(4)} (${usageData.total_tokens} tokens)`));
+      
+      await this.logInteraction('cost_summary', 'Session cost calculated', {
+        total_cost: usageData.total_cost,
+        total_tokens: usageData.total_tokens,
+        session_id: context.sessionId
+      });
+    } catch (error) {
+      console.log(chalk.yellow('⚠️ Could not retrieve usage information'));
+    }
   }
 }
 

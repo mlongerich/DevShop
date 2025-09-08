@@ -43,12 +43,21 @@ export class AnthropicProvider extends BaseLLMProvider {
 
     const mappedModel = this.mapModelName(chatRequest.model);
     
+    // Separate system messages from other messages for Anthropic API
+    const systemMessages = chatRequest.messages.filter(msg => msg.role === 'system');
+    const nonSystemMessages = chatRequest.messages.filter(msg => msg.role !== 'system');
+    
     // Build Anthropic request
     const requestBody = {
       model: mappedModel,
-      messages: chatRequest.messages,
+      messages: nonSystemMessages,
       max_tokens: chatRequest.maxTokens || 1000
     };
+
+    // Add system message if present (Anthropic expects it as a separate parameter)
+    if (systemMessages.length > 0) {
+      requestBody.system = systemMessages.map(msg => msg.content).join('\n\n');
+    }
 
     // Add optional parameters
     if (chatRequest.temperature !== undefined) {
@@ -78,14 +87,25 @@ export class AnthropicProvider extends BaseLLMProvider {
         throw new Error(`Anthropic API error: ${data.error.message}`);
       }
       
-      const content = data.content[0].text;
+      // Extract content from Anthropic response format
+      const content = data.content && data.content[0] && data.content[0].text ? data.content[0].text : '';
       const usage = {
-        prompt_tokens: data.usage.input_tokens,
-        completion_tokens: data.usage.output_tokens,
-        total_tokens: data.usage.input_tokens + data.usage.output_tokens
+        prompt_tokens: data.usage ? data.usage.input_tokens : 0,
+        completion_tokens: data.usage ? data.usage.output_tokens : 0,
+        total_tokens: data.usage ? (data.usage.input_tokens + data.usage.output_tokens) : 0
       };
 
-      return new LLMResponse(content, usage);
+      // Create response object that matches expected format
+      const llmResponse = new LLMResponse(content, usage);
+      
+      // Add the choices array format that FastMCP expects
+      llmResponse.choices = [{
+        message: {
+          content: content
+        }
+      }];
+
+      return llmResponse;
     } catch (error) {
       if (error.message.includes('fetch')) {
         throw new Error(`Anthropic API network error: ${error.message}`);
