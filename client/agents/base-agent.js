@@ -377,28 +377,36 @@ export class BaseAgent {
       
       // Add tool-specific parameters based on name patterns and capabilities
       if (tool.name.includes('contents') || tool.name.includes('file')) {
-        // For file contents tools, try most likely parameter combinations first
+        // For file contents tools, try comprehensive parameter combinations
         const parameterSets = [
-          { path: '' },  // Empty path (most likely)
-          { },  // No additional params
-          { path: '', ref: 'main' },  // Default branch
+          { },  // No additional params - sometimes tools work without path
+          { path: '/' },  // Root directory
+          { path: '' },  // Empty path string
+          { path: '.', ref: 'main' },  // Current directory with main branch
+          { path: '', ref: 'main' },  // Empty path with main branch
+          { path: '', ref: 'master' },  // Empty path with master branch (fallback)
+          { ref: 'main' },  // Just branch reference
+          { ref: 'HEAD' },  // HEAD reference
         ];
         
         for (let i = 0; i < parameterSets.length; i++) {
           const params = parameterSets[i];
           try {
-            const paramStr = Object.keys(params).length > 0 ? ` with ${JSON.stringify(params)}` : '';
+            const paramStr = Object.keys(params).length > 0 ? ` with ${JSON.stringify(params)}` : ' with no additional params';
             console.log(chalk.gray(`Calling ${tool.name}${paramStr}...`));
             const result = await this.callMCPTool('github', tool.name, { ...args, ...params });
+            console.log(chalk.green(`✅ Repository analysis succeeded with ${tool.name}`));
             return this.formatRepositoryAnalysisResult(result, tool.name);
           } catch (error) {
+            console.log(chalk.yellow(`⚠️ Attempt ${i + 1}/${parameterSets.length} failed: ${error.message}`));
             if (i === parameterSets.length - 1) {
               // If all attempts fail, provide a fallback response
-              console.log(chalk.yellow(`⚠️ Repository analysis failed: ${error.message}`));
+              console.log(chalk.red(`❌ All ${parameterSets.length} parameter combinations failed for ${tool.name}`));
               return {
-                structure: `Repository: ${args.owner}/${args.repo}\nAnalysis failed: ${error.message}\nNote: Unable to access repository structure. Please check repository permissions.`,
+                structure: `Repository: ${args.owner}/${args.repo}\nAnalysis failed after trying ${parameterSets.length} parameter combinations.\nLast error: ${error.message}\nNote: This may be due to repository permissions, private repository access, or API limits. Please check:\n1. Repository is public or you have access\n2. GitHub token has required permissions\n3. API rate limits are not exceeded`,
                 tool_used: tool.name,
                 error: error.message,
+                attempts: parameterSets.length,
                 analyzed_at: new Date().toISOString()
               };
             }
@@ -406,22 +414,82 @@ export class BaseAgent {
           }
         }
       } else if (tool.name.includes('tree')) {
-        args.path = '';
-        args.recursive = true;
-        console.log(chalk.gray(`Calling ${tool.name}...`));
-        const result = await this.callMCPTool('github', tool.name, args);
-        return this.formatRepositoryAnalysisResult(result, tool.name);
+        // For tree tools, try different recursive and path combinations
+        const treeParameterSets = [
+          { path: '', recursive: true },
+          { path: '', recursive: false },
+          { recursive: true },
+          { path: '/' },
+          { },  // No additional params
+        ];
+        
+        for (let i = 0; i < treeParameterSets.length; i++) {
+          const params = treeParameterSets[i];
+          try {
+            const paramStr = Object.keys(params).length > 0 ? ` with ${JSON.stringify(params)}` : ' with no additional params';
+            console.log(chalk.gray(`Calling ${tool.name}${paramStr}...`));
+            const result = await this.callMCPTool('github', tool.name, { ...args, ...params });
+            console.log(chalk.green(`✅ Repository tree analysis succeeded with ${tool.name}`));
+            return this.formatRepositoryAnalysisResult(result, tool.name);
+          } catch (error) {
+            console.log(chalk.yellow(`⚠️ Tree attempt ${i + 1}/${treeParameterSets.length} failed: ${error.message}`));
+            if (i === treeParameterSets.length - 1) {
+              throw new Error(`All tree parameter combinations failed: ${error.message}`);
+            }
+            continue;
+          }
+        }
       } else if (tool.name.includes('files') || tool.name.includes('list')) {
-        // For listing tools, may need path parameter
-        args.path = '';
-        console.log(chalk.gray(`Calling ${tool.name}...`));
-        const result = await this.callMCPTool('github', tool.name, args);
-        return this.formatRepositoryAnalysisResult(result, tool.name);
+        // For listing tools, try various parameter combinations
+        const listParameterSets = [
+          { },  // No additional params
+          { path: '' },
+          { path: '/' },
+          { path: '.', type: 'file' },
+          { type: 'all' },
+        ];
+        
+        for (let i = 0; i < listParameterSets.length; i++) {
+          const params = listParameterSets[i];
+          try {
+            const paramStr = Object.keys(params).length > 0 ? ` with ${JSON.stringify(params)}` : ' with no additional params';
+            console.log(chalk.gray(`Calling ${tool.name}${paramStr}...`));
+            const result = await this.callMCPTool('github', tool.name, { ...args, ...params });
+            console.log(chalk.green(`✅ Repository file list succeeded with ${tool.name}`));
+            return this.formatRepositoryAnalysisResult(result, tool.name);
+          } catch (error) {
+            console.log(chalk.yellow(`⚠️ List attempt ${i + 1}/${listParameterSets.length} failed: ${error.message}`));
+            if (i === listParameterSets.length - 1) {
+              throw new Error(`All list parameter combinations failed: ${error.message}`);
+            }
+            continue;
+          }
+        }
       } else {
-        // Default case - try the tool as-is
-        console.log(chalk.gray(`Calling ${tool.name}...`));
-        const result = await this.callMCPTool('github', tool.name, args);
-        return this.formatRepositoryAnalysisResult(result, tool.name);
+        // Default case - try the tool as-is, then with common parameters
+        const defaultParameterSets = [
+          { },  // No additional params
+          { ref: 'main' },
+          { ref: 'master' },
+          { ref: 'HEAD' },
+        ];
+        
+        for (let i = 0; i < defaultParameterSets.length; i++) {
+          const params = defaultParameterSets[i];
+          try {
+            const paramStr = Object.keys(params).length > 0 ? ` with ${JSON.stringify(params)}` : ' with no additional params';
+            console.log(chalk.gray(`Calling ${tool.name}${paramStr}...`));
+            const result = await this.callMCPTool('github', tool.name, { ...args, ...params });
+            console.log(chalk.green(`✅ Repository analysis succeeded with ${tool.name}`));
+            return this.formatRepositoryAnalysisResult(result, tool.name);
+          } catch (error) {
+            console.log(chalk.yellow(`⚠️ Default attempt ${i + 1}/${defaultParameterSets.length} failed: ${error.message}`));
+            if (i === defaultParameterSets.length - 1) {
+              throw new Error(`All default parameter combinations failed: ${error.message}`);
+            }
+            continue;
+          }
+        }
       }
       
     } catch (error) {
