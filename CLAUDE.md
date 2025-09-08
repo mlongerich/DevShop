@@ -260,6 +260,32 @@ npm run ba -- --repo=your-org/repo --verbose "test request"
 - **Graceful Degradation**: System continues working if individual components fail
 - **Health Monitoring**: Built-in diagnostics and status reporting
 
+## Recent Improvements (v1.1.3)
+
+### Response Formatting Enhancement
+- **Clean Output Display**: LLM responses now show formatted markdown instead of raw JSON
+- **Escape Sequence Processing**: Automatic conversion of `\\n` → newlines, `\\\"` → quotes
+- **FastMCP Response Parsing**: Fixed nested JSON structure parsing for proper content extraction
+- **GitHub Issue Formatting**: Issues now contain clean markdown instead of escaped JSON
+
+### GitHub Repository Integration
+- **Enhanced Parameter Fallbacks**: Comprehensive parameter sets for different GitHub MCP tool types
+- **Improved Tool Discovery**: Dynamic GitHub tool discovery with 8+ fallback parameter combinations
+- **Repository Access Fix**: Resolved "missing path parameter" errors with smart parameter handling
+- **Success/Failure Logging**: Better visibility into GitHub tool execution status
+
+### Model Configuration System
+- **Environment Variable Priority**: `.env` settings now properly override config file values
+- **Centralized Model Selection**: `getModelForAgent()` method for consistent model assignment
+- **Temperature Compatibility**: Smart temperature handling for models that don't support it (gpt-5-nano)
+- **Multi-Provider Support**: Seamless switching between OpenAI, Anthropic, and Google models
+
+### Code Quality Improvements
+- **Stale Code Removal**: Cleaned up outdated TODO comments and unused parameters
+- **Dynamic Tool Discovery**: Replaced hardcoded MCP tool calls with flexible discovery system
+- **Professional Issue Generation**: Removed DevShop footers from generated GitHub issues
+- **Enhanced Error Handling**: Better error messages with troubleshooting guidance
+
 ## Development Workflow
 
 ### Local Development

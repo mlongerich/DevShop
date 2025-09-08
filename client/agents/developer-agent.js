@@ -120,12 +120,12 @@ export class DeveloperAgent extends BaseAgent {
    * This would parse the LLM response and create actual code files
    */
   async implementFiles() {
-    // TODO: Parse implementation response and create actual files
-    // This could include:
-    // - Parsing code blocks from the response
+    // Future enhancement: Parse implementation response and create actual files
+    // This would include:
+    // - Parsing code blocks from the LLM response
     // - Creating new files via GitHub API
     // - Updating existing files
-    // - Creating pull requests
+    // - Creating pull requests with the changes
     console.log(chalk.yellow('📝 File implementation would happen here (future enhancement)'));
   }
 }

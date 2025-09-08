@@ -34,7 +34,7 @@ export class BaseAgent {
    * @param {Object} context - Execution context
    * @returns {Promise<Object>} Execution result
    */
-  async execute(context) {
+  async execute(_context) {
     throw new Error('execute() must be implemented by subclass');
   }
 
@@ -43,7 +43,7 @@ export class BaseAgent {
    * @param {Object} context - Context to validate
    * @returns {boolean} True if context is valid
    */
-  validateContext(context) {
+  validateContext(_context) {
     throw new Error('validateContext() must be implemented by subclass');
   }
 
@@ -316,10 +316,9 @@ export class BaseAgent {
   /**
    * Analyze repository structure using dynamic tool discovery
    * @param {Object} context - Enhanced context with repoOwner, repoName
-   * @param {Array} toolPriorities - Optional priority list for tool selection
    * @returns {Promise<Object>} Repository analysis result
    */
-  async analyzeRepository(context, toolPriorities = []) {
+  async analyzeRepository(context) {
     console.log(chalk.blue('📁 Analyzing repository structure...'));
     
     try {
@@ -597,8 +596,7 @@ export class BaseAgent {
    */
   async generateAgentPrompt(agentRole, taskDescription, context = '') {
     try {
-      // For LLM tools, use known tool names since FastMCP server doesn't expose tools properly  
-      // TODO: Fix FastMCP server tool discovery in the future
+      // For LLM tools, use known tool names since FastMCP server doesn't expose tools properly
       try {
         const result = await this.callMCPTool('fastmcp', 'llm_create_agent_prompt', {
           agent_role: agentRole,
@@ -676,7 +674,6 @@ export class BaseAgent {
       ];
 
       // For LLM tools, use known tool names since FastMCP server doesn't expose tools properly
-      // TODO: Fix FastMCP server tool discovery in the future
       const modelName = this.getModelForAgent(agentRole);
       const requestParams = {
         messages: messages,
@@ -894,7 +891,6 @@ export class BaseAgent {
   async logCompletion(context) {
     try {
       // For LLM tools, use known tool names since FastMCP server doesn't expose tools properly
-      // TODO: Fix FastMCP server tool discovery in the future
       let usageData = { total_cost: 0, total_tokens: 0 };
       
       try {
