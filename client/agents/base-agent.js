@@ -377,34 +377,52 @@ export class BaseAgent {
       
       // Add tool-specific parameters based on name patterns and capabilities
       if (tool.name.includes('contents') || tool.name.includes('file')) {
-        // For file contents tools, try multiple approaches
-        try {
-          // First try without path (to get repository root contents)
-          console.log(chalk.gray(`Calling ${tool.name}...`));
-          const result = await this.callMCPTool('github', tool.name, args);
-          return this.formatRepositoryAnalysisResult(result, tool.name);
-        } catch (error) {
-          // If that fails and error mentions path, try with empty path
-          if (error.message.includes('path') || error.message.includes('required parameter')) {
-            console.log(chalk.gray(`Retrying ${tool.name} with path parameter...`));
-            args.path = '';
-            const result = await this.callMCPTool('github', tool.name, args);
+        // For file contents tools, try most likely parameter combinations first
+        const parameterSets = [
+          { path: '' },  // Empty path (most likely)
+          { },  // No additional params
+          { path: '', ref: 'main' },  // Default branch
+        ];
+        
+        for (let i = 0; i < parameterSets.length; i++) {
+          const params = parameterSets[i];
+          try {
+            const paramStr = Object.keys(params).length > 0 ? ` with ${JSON.stringify(params)}` : '';
+            console.log(chalk.gray(`Calling ${tool.name}${paramStr}...`));
+            const result = await this.callMCPTool('github', tool.name, { ...args, ...params });
             return this.formatRepositoryAnalysisResult(result, tool.name);
+          } catch (error) {
+            if (i === parameterSets.length - 1) {
+              // If all attempts fail, provide a fallback response
+              console.log(chalk.yellow(`⚠️ Repository analysis failed: ${error.message}`));
+              return {
+                structure: `Repository: ${args.owner}/${args.repo}\nAnalysis failed: ${error.message}\nNote: Unable to access repository structure. Please check repository permissions.`,
+                tool_used: tool.name,
+                error: error.message,
+                analyzed_at: new Date().toISOString()
+              };
+            }
+            continue; // Try next parameter set
           }
-          throw error;
         }
       } else if (tool.name.includes('tree')) {
         args.path = '';
         args.recursive = true;
+        console.log(chalk.gray(`Calling ${tool.name}...`));
+        const result = await this.callMCPTool('github', tool.name, args);
+        return this.formatRepositoryAnalysisResult(result, tool.name);
       } else if (tool.name.includes('files') || tool.name.includes('list')) {
         // For listing tools, may need path parameter
         args.path = '';
+        console.log(chalk.gray(`Calling ${tool.name}...`));
+        const result = await this.callMCPTool('github', tool.name, args);
+        return this.formatRepositoryAnalysisResult(result, tool.name);
+      } else {
+        // Default case - try the tool as-is
+        console.log(chalk.gray(`Calling ${tool.name}...`));
+        const result = await this.callMCPTool('github', tool.name, args);
+        return this.formatRepositoryAnalysisResult(result, tool.name);
       }
-      
-      console.log(chalk.gray(`Calling ${tool.name}...`));
-      
-      const result = await this.callMCPTool('github', tool.name, args);
-      return this.formatRepositoryAnalysisResult(result, tool.name);
       
     } catch (error) {
       throw new Error(`Failed to analyze repository with ${tool.name}: ${error.message}`);
@@ -544,6 +562,24 @@ export class BaseAgent {
   }
 
   /**
+   * Get the appropriate model for an agent role with proper environment variable priority
+   * Environment variables take precedence over config files, enabling .env overrides
+   * @param {string} agentRole - Agent role (ba, developer, etc.)
+   * @returns {string} Model name to use
+   */
+  getModelForAgent(agentRole) {
+    // Priority order: Environment variables > config files > fallback default
+    const envModelMap = {
+      ba: process.env.OPENAI_BA_MODEL,
+      developer: process.env.OPENAI_DEV_MODEL
+    };
+    
+    return envModelMap[agentRole] || 
+           this.config?.models?.[agentRole] || 
+           'gpt-5-nano';
+  }
+
+  /**
    * Generate LLM response using standardized pattern
    * @param {string} agentRole - Agent role for logging and model selection
    * @param {Function|string} systemPromptMethod - Method name or prompt string
@@ -573,21 +609,35 @@ export class BaseAgent {
 
       // For LLM tools, use known tool names since FastMCP server doesn't expose tools properly
       // TODO: Fix FastMCP server tool discovery in the future
-      const completion = await this.callMCPTool('fastmcp', 'llm_chat_completion', {
+      const modelName = this.getModelForAgent(agentRole);
+      const requestParams = {
         messages: messages,
-        model: this.config?.models?.[agentRole] || 'claude-3.5-sonnet',
+        model: modelName,
         api_key: this.config?.llm?.api_key,
         base_url: this.config?.llm?.base_url,
         session_id: context.sessionId,
         agent_role: agentRole
-      });
+      };
+      
+      // Only add temperature for models that support it (avoid gpt-5-nano issues)
+      if (!modelName.includes('gpt-5-nano')) {
+        requestParams.temperature = 0.7;
+      }
+      
+      const completion = await this.callMCPTool('fastmcp', 'llm_chat_completion', requestParams);
 
       // Handle different LLM response formats with robust parsing
       let response;
       if (completion && completion.content && Array.isArray(completion.content) && completion.content[0]) {
         // MCP format: { content: [{ text: "..." }] }
         try {
-          response = JSON.parse(completion.content[0].text);
+          const parsed = JSON.parse(completion.content[0].text);
+          // If the parsed response has a 'response' field, use that as content
+          if (parsed.response) {
+            response = { content: parsed.response, usage: parsed.usage };
+          } else {
+            response = parsed;
+          }
         } catch (error) {
           // If JSON parsing fails, use the text directly
           response = { content: completion.content[0].text };
@@ -595,14 +645,24 @@ export class BaseAgent {
       } else if (completion && completion.content && completion.content.text) {
         // Direct format: { content: { text: "..." } }
         try {
-          response = JSON.parse(completion.content.text);
+          const parsed = JSON.parse(completion.content.text);
+          if (parsed.response) {
+            response = { content: parsed.response, usage: parsed.usage };
+          } else {
+            response = parsed;
+          }
         } catch (error) {
           response = { content: completion.content.text };
         }
       } else if (completion && typeof completion.content === 'string') {
         // String format: { content: "..." }
         try {
-          response = JSON.parse(completion.content);
+          const parsed = JSON.parse(completion.content);
+          if (parsed.response) {
+            response = { content: parsed.response, usage: parsed.usage };
+          } else {
+            response = parsed;
+          }
         } catch (error) {
           response = { content: completion.content };
         }
@@ -614,11 +674,14 @@ export class BaseAgent {
         };
       }
       
+      // Ensure we have content to display
+      const contentToDisplay = response.content || 'No response content available';
+      
       console.log(chalk.green(`\\n📋 ${agentRole.toUpperCase()} Agent Response:`));
-      console.log(response.content);
+      console.log(contentToDisplay);
 
       return {
-        content: response.content,
+        content: contentToDisplay,
         usage: response.usage || {},
         generated_at: new Date().toISOString()
       };

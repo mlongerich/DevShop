@@ -130,14 +130,14 @@ export class ConfigService {
   }
 
   /**
-   * Get models configuration
+   * Get models configuration with environment variable priority
    * @returns {Object} Models configuration
    */
   getModelsConfig() {
     const config = this.getConfig();
     return {
-      ba: config.models?.ba || 'gpt-5-nano',
-      developer: config.models?.developer || 'claude-3-haiku',
+      ba: process.env.OPENAI_BA_MODEL || config.models?.ba || 'gpt-5-nano',
+      developer: process.env.OPENAI_DEV_MODEL || config.models?.developer || 'gpt-5-nano',
       ...config.models
     };
   }

@@ -62,7 +62,7 @@ npm run status         # Quick system health check
 ```bash
 # Business Analyst workflows
 npm run ba -- --repo=org/repo "feature description"
-npm run ba -- --repo=org/repo --verbose "detailed analysis request"
+npm run ba -- --repo=org/repo --verbose "detailed analysis request" 
 npm run ba -- --repo=org/repo --session=abc-123 "continue analysis"
 
 # Developer workflows
@@ -96,6 +96,45 @@ npm run fastmcp:container       # Start secure FastMCP container
 npm run fastmcp:container:stop  # Stop containerized FastMCP server
 npm run fastmcp:container:logs  # Monitor container logs
 npm run test:security           # Test container security configuration
+```
+
+## Model Configuration
+
+### Environment Variable Priority System
+DevShop 1.1 now implements centralized model configuration with environment variable priority through the BaseAgent class:
+
+**Priority Order**: Environment Variables → Config Files → Default Fallback
+
+### Configuring Models via .env
+```bash
+# Override default models for specific agents
+OPENAI_BA_MODEL=gpt-5-nano           # Business Analyst agent model
+OPENAI_DEV_MODEL=gpt-5-nano          # Developer agent model
+
+# These override settings in config/default.json
+```
+
+### Supported Model Examples
+```bash
+# OpenAI Models
+OPENAI_BA_MODEL=gpt-5-nano
+OPENAI_BA_MODEL=gpt-4o
+OPENAI_BA_MODEL=gpt-4o-mini
+
+# Anthropic Models (use config/default.json for these)
+# config/default.json: "ba": "claude-3.5-sonnet"
+# config/default.json: "developer": "claude-3-haiku"
+```
+
+### Model Compatibility Features
+- **Temperature Handling**: gpt-5-nano models automatically skip temperature parameter (unsupported)
+- **Automatic Selection**: All agents use BaseAgent.getModelForAgent() for consistent model selection
+- **Future-Proof**: New agents automatically inherit proper model configuration
+
+### Testing Model Configuration
+```bash
+# Verify your model is being used (check output for "model": "your-model-name")
+npm run ba -- --repo=your-org/repo --verbose "test request"
 ```
 
 ## Key Files to Understand

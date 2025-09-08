@@ -85,13 +85,21 @@ async function createFastMCPServer() {
 
         // Execute chat completion with enhanced parameters
         const startTime = Date.now();
-        const response = await provider.chatCompletion({
+        const requestParams = {
           model,
           messages,
-          temperature: temperature || 0.7,
           max_tokens: max_tokens || 1000,
           stream: stream || false
-        }, effectiveSessionId);
+        };
+        
+        // Only add temperature for models that support it (gpt-5-nano doesn't support custom temperature)
+        if (temperature !== undefined && !model.includes('gpt-5-nano')) {
+          requestParams.temperature = temperature;
+        } else if (!model.includes('gpt-5-nano')) {
+          requestParams.temperature = 0.7;
+        }
+        
+        const response = await provider.chatCompletion(requestParams, effectiveSessionId);
         
         const processingTime = Date.now() - startTime;
 
