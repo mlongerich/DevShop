@@ -742,14 +742,19 @@ export class BaseAgent {
         };
       }
       
-      // Ensure we have content to display
-      const contentToDisplay = response.content || 'No response content available';
+      // Format content for clean display
+      const isVerbose = context.verbose || false;
+      const formattedContent = this.formatLLMResponseForDisplay(
+        response.content, 
+        response.usage, 
+        isVerbose
+      );
       
-      console.log(chalk.green(`\\n📋 ${agentRole.toUpperCase()} Agent Response:`));
-      console.log(contentToDisplay);
+      console.log(chalk.green(`\n📋 ${agentRole.toUpperCase()} Agent Response:`));
+      console.log(formattedContent);
 
       return {
-        content: contentToDisplay,
+        content: response.content || 'No response content available',
         usage: response.usage || {},
         generated_at: new Date().toISOString()
       };
@@ -757,6 +762,47 @@ export class BaseAgent {
     } catch (error) {
       throw new Error(`Failed to generate ${agentRole} response: ${error.message}`);
     }
+  }
+
+  /**
+   * Format LLM response content for clean display
+   * @param {string} rawContent - Raw LLM response content
+   * @param {Object} usage - Usage statistics (optional)
+   * @param {boolean} verbose - Whether to show detailed info
+   * @returns {string} Formatted content for display
+   */
+  formatLLMResponseForDisplay(rawContent, usage = {}, verbose = false) {
+    if (!rawContent) {
+      return 'No response content available';
+    }
+
+    // Convert escaped newlines to actual newlines
+    let formattedContent = rawContent.replace(/\\n/g, '\n');
+    
+    // Convert escaped quotes
+    formattedContent = formattedContent.replace(/\\"/g, '"');
+    
+    // Convert escaped backslashes
+    formattedContent = formattedContent.replace(/\\\\/g, '\\');
+    
+    // Remove any trailing/leading whitespace
+    formattedContent = formattedContent.trim();
+    
+    // If verbose mode, add usage information at the end
+    if (verbose && usage && Object.keys(usage).length > 0) {
+      const tokens = usage.total_tokens || usage.completion_tokens || 0;
+      const cost = usage.cost || usage.cost_estimate || 0;
+      const model = usage.model || 'unknown';
+      
+      formattedContent += '\n\n' + chalk.gray('---') + '\n';
+      formattedContent += chalk.gray(`💰 Usage: ${tokens} tokens, $${cost.toFixed(4)} (${model})`);
+      
+      if (usage.processing_time_ms) {
+        formattedContent += chalk.gray(` • ${usage.processing_time_ms}ms`);
+      }
+    }
+    
+    return formattedContent;
   }
 
   /**
