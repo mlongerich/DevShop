@@ -106,7 +106,7 @@ async function createFastMCPServer() {
         // Enhanced response with metadata
         const enhancedResponse = {
           success: true,
-          response: response.choices?.[0]?.message?.content || "",
+          response: response.content || response.choices?.[0]?.message?.content || "",
           usage: {
             ...response.usage,
             processing_time_ms: processingTime,

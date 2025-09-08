@@ -177,7 +177,7 @@ async function main() {
     .command('ba')
     .description('Run Business Analyst agent for requirements analysis')
     .requiredOption('--repo <repo>', 'Repository in format owner/repo-name')
-    .requiredOption('<description>', 'Feature description for analysis')
+    .argument('<description>', 'Feature description for analysis')
     .option('--session <id>', 'Existing session ID to resume')
     .option('--verbose', 'Verbose output with detailed information')
     .action(async (description, options) => {

@@ -9,7 +9,7 @@ import chalk from 'chalk';
 export class BACommand extends BaseCommand {
   constructor(configService, sessionService, mcpClientManager) {
     super(configService, sessionService, mcpClientManager);
-    this.agent = new BAAgent(mcpClientManager);
+    this.agent = new BAAgent(mcpClientManager, sessionService, configService.getConfig());
   }
 
   /**
@@ -31,38 +31,45 @@ export class BACommand extends BaseCommand {
 
       console.log(chalk.blue('🔍 Starting Business Analysis...'));
 
-      // Create or resume session
-      const sessionId = options.session || 
-        await this.sessionService.createSession('ba', `Feature analysis for ${options.repo}: ${options.description}`);
-      
-      this.sessionService.setActiveSession(sessionId);
+      // Create or resume session using base method
+      const sessionId = await this.createOrResumeSession(
+        'ba', 
+        `Feature analysis for ${options.repo}: ${options.description}`, 
+        options
+      );
 
-      // Prepare context
-      const context = {
+      // Prepare context using base method
+      const context = this.prepareRepositoryContext(options, sessionId, {
+        featureDescription: options.description,
         repo: options.repo,
-        description: options.description,
-        session_id: sessionId,
-        verbose: options.verbose || false
-      };
-
-      // Execute BA agent
-      const result = await this.agent.execute(context);
-
-      // Log results
-      await this.sessionService.logInteraction('ba_analysis_complete', 'BA analysis completed', {
-        repo: options.repo,
-        requirements_count: result.requirements?.length || 0,
-        acceptance_criteria_count: result.acceptance_criteria?.length || 0,
-        technical_considerations: result.technical_considerations?.length || 0
+        description: options.description
       });
 
-      await this.logCommandEnd(command, result);
+      // Execute BA agent using base method
+      const result = await this.executeAgent(
+        command,
+        context,
+        'ba_analysis_complete',
+        'BA analysis completed',
+        {
+          repo: options.repo
+        }
+      );
 
-      // Display summary
-      console.log(chalk.green('\n✅ Business Analysis Complete'));
-      console.log(chalk.gray(`Session ID: ${sessionId}`));
-      console.log(chalk.gray(`Requirements identified: ${result.requirements?.length || 0}`));
-      console.log(chalk.gray(`Acceptance criteria: ${result.acceptance_criteria?.length || 0}`));
+      // Log additional result metrics after execution
+      await this.sessionService.logInteraction('ba_analysis_metrics', 'BA analysis metrics', {
+        repo: options.repo,
+        requirements_count: result?.requirements?.length || 0,
+        acceptance_criteria_count: result?.acceptance_criteria?.length || 0,
+        technical_considerations: result?.technical_considerations?.length || 0
+      });
+
+      // Display summary using base method with additional lines
+      const summaryLines = [
+        `Requirements identified: ${result.requirements?.length || 0}`,
+        `Acceptance criteria: ${result.acceptance_criteria?.length || 0}`
+      ];
+      this.displayBasicSummary('Business Analysis', sessionId, summaryLines);
 
       if (options.verbose) {
         console.log(chalk.yellow('\n📋 Summary:'));

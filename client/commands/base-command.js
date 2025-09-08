@@ -1,3 +1,5 @@
+import chalk from 'chalk';
+
 /**
  * Base Command
  * Abstract base class for all CLI commands using the Command pattern
@@ -83,5 +85,86 @@ export class BaseCommand {
     }
     
     return sanitized;
+  }
+
+  /**
+   * Create or resume session for agent commands
+   * @param {string} agentType - Type of agent (ba, developer, etc.)
+   * @param {string} sessionContext - Description of the session
+   * @param {Object} options - Command options
+   * @returns {Promise<string>} Session ID
+   */
+  async createOrResumeSession(agentType, sessionContext, options) {
+    const sessionId = options.session || 
+      await this.sessionService.createSession(agentType, sessionContext);
+    
+    this.sessionService.setActiveSession(sessionId);
+    return sessionId;
+  }
+
+  /**
+   * Prepare repository context for agent commands
+   * @param {Object} options - Command options with repo field
+   * @param {string} sessionId - Session ID
+   * @param {Object} additionalFields - Additional command-specific fields
+   * @returns {Object} Prepared context object
+   */
+  prepareRepositoryContext(options, sessionId, additionalFields = {}) {
+    if (!options.repo) {
+      throw new Error('Repository option is required');
+    }
+
+    const [repoOwner, repoName] = options.repo.split('/');
+    if (!repoOwner || !repoName) {
+      throw new Error('Repository must be in format owner/repo-name');
+    }
+
+    return {
+      sessionId,
+      repoOwner,
+      repoName,
+      verbose: options.verbose || false,
+      ...additionalFields
+    };
+  }
+
+  /**
+   * Execute agent with standardized logging and error handling
+   * @param {string} commandName - Command name for logging
+   * @param {Object} context - Context to pass to agent
+   * @param {string} completionLogType - Type for completion log interaction
+   * @param {string} completionMessage - Message for completion log
+   * @param {Object} completionMetadata - Additional metadata for completion log
+   * @returns {Promise<Object>} Agent result
+   */
+  async executeAgent(commandName, context, completionLogType, completionMessage, completionMetadata = {}) {
+    // Execute agent
+    const result = await this.agent.execute(context);
+
+    // Log completion interaction
+    await this.sessionService.logInteraction(completionLogType, completionMessage, {
+      ...completionMetadata,
+      session_id: context.sessionId
+    });
+
+    // Log command completion
+    await this.logCommandEnd(commandName, result);
+
+    return result;
+  }
+
+  /**
+   * Display basic command completion summary
+   * @param {string} workType - Type of work completed (e.g., "Business Analysis", "Development Work")
+   * @param {string} sessionId - Session ID
+   * @param {Array<string>} additionalLines - Additional summary lines to display
+   */
+  displayBasicSummary(workType, sessionId, additionalLines = []) {
+    console.log(chalk.green(`\n✅ ${workType} Complete`));
+    console.log(chalk.gray(`Session ID: ${sessionId}`));
+    
+    for (const line of additionalLines) {
+      console.log(chalk.gray(line));
+    }
   }
 }

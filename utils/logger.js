@@ -208,6 +208,30 @@ class Logger {
     }
     return counts;
   }
+
+  /**
+   * Log error information to session
+   * @param {string} sessionId - Session ID
+   * @param {string} logDir - Log directory path
+   * @param {Error} error - Error object
+   * @param {Object} context - Additional error context
+   */
+  static async logError(sessionId, logDir, error, context = {}) {
+    const errorData = {
+      error_message: error.message,
+      error_stack: error.stack,
+      error_name: error.name,
+      ...context
+    };
+
+    return await this.logInteraction(
+      sessionId, 
+      logDir, 
+      'error', 
+      errorData, 
+      context.agent || 'system'
+    );
+  }
 }
 
 export default Logger;
