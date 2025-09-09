@@ -637,7 +637,9 @@ export class BaseAgent {
     // Priority order: Environment variables > config files > fallback default
     const envModelMap = {
       ba: process.env.OPENAI_BA_MODEL,
-      developer: process.env.OPENAI_DEV_MODEL
+      developer: process.env.OPENAI_DEV_MODEL,
+      tl: process.env.OPENAI_TL_MODEL,
+      'tech-lead': process.env.OPENAI_TL_MODEL  // Support both 'tl' and 'tech-lead' agent roles
     };
     
     return envModelMap[agentRole] || 

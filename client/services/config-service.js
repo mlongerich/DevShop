@@ -138,6 +138,8 @@ export class ConfigService {
     return {
       ba: process.env.OPENAI_BA_MODEL || config.models?.ba || 'gpt-5-nano',
       developer: process.env.OPENAI_DEV_MODEL || config.models?.developer || 'gpt-5-nano',
+      tl: process.env.OPENAI_TL_MODEL || config.models?.tl || 'gpt-5-nano',
+      'tech-lead': process.env.OPENAI_TL_MODEL || config.models?.['tech-lead'] || 'gpt-5-nano',
       ...config.models
     };
   }

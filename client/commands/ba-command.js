@@ -1,18 +1,35 @@
 import { BaseCommand } from './base-command.js';
 import { BAAgent } from '../agents/ba-agent.js';
 import { ConversationalBAAgent } from '../agents/conversational-ba-agent.js';
+import { TechLeadAgent } from '../agents/tech-lead-agent.js';
+import { AgentCommunicationService } from '../services/agent-communication-service.js';
 import { InteractiveCLI } from '../interfaces/interactive-cli.js';
 import chalk from 'chalk';
 
 /**
  * BA Command
- * Handles business analyst agent workflow
+ * Handles business analyst agent workflow including multi-agent collaboration
  */
 export class BACommand extends BaseCommand {
   constructor(configService, sessionService, mcpClientManager) {
     super(configService, sessionService, mcpClientManager);
     this.agent = new BAAgent(mcpClientManager, sessionService, configService.getConfig());
-    this.conversationalAgent = new ConversationalBAAgent(mcpClientManager, sessionService, configService.getConfig());
+    this.techLeadAgent = new TechLeadAgent(mcpClientManager, sessionService, configService.getConfig());
+    this.agentCommunicationService = new AgentCommunicationService(this.logDir, sessionService);
+    
+    // Create conversational BA agent with multi-agent capabilities
+    // Note: interactive mode will be set when executing interactive commands
+    this.conversationalAgent = new ConversationalBAAgent(
+      mcpClientManager, 
+      sessionService, 
+      configService.getConfig(),
+      {
+        multiAgent: true,
+        techLeadAgent: this.techLeadAgent,
+        agentCommunicationService: this.agentCommunicationService,
+        interactive: false // Default to false, will be updated for interactive mode
+      }
+    );
   }
 
   /**
@@ -242,7 +259,7 @@ export class BACommand extends BaseCommand {
   }
 
   /**
-   * Handle interactive real-time conversation mode
+   * Handle interactive real-time conversation mode (single or multi-agent)
    * @param {Object} options - Command options
    * @returns {Promise<Object>} Interactive session result
    */
@@ -250,16 +267,41 @@ export class BACommand extends BaseCommand {
     // Validate repository is provided
     this.validateOptions(options, ['repo']);
 
-    console.log(chalk.blue('🚀 Starting interactive BA session...'));
+    const isMultiAgent = options.multiAgent || false;
+    const sessionType = isMultiAgent ? 'multi-agent interactive' : 'interactive BA';
+    
+    console.log(chalk.blue(`🚀 Starting ${sessionType} session...`));
 
     // Check if resuming an existing session
     const existingSessionId = options.session;
     
-    // Create InteractiveCLI instance with required dependencies
+    // Create interactive-enabled conversational BA agent
+    const interactiveConversationalAgent = new ConversationalBAAgent(
+      this.mcpClientManager, 
+      this.sessionService, 
+      this.configService.getConfig(),
+      {
+        multiAgent: isMultiAgent,
+        techLeadAgent: isMultiAgent ? this.techLeadAgent : null,
+        agentCommunicationService: isMultiAgent ? this.agentCommunicationService : null,
+        interactive: true, // Enable interactive mode for full conversation visibility
+        verboseCollaboration: options.verbose || false
+      }
+    );
+    
+    // Configure options for InteractiveCLI
+    const cliOptions = {
+      multiAgent: isMultiAgent,
+      techLeadAgent: isMultiAgent ? this.techLeadAgent : null,
+      agentCommunicationService: isMultiAgent ? this.agentCommunicationService : null
+    };
+
+    // Create InteractiveCLI instance with multi-agent support
     const interactiveCLI = new InteractiveCLI(
-      this.conversationalAgent,
-      this.conversationalAgent.conversationManager,
-      this.sessionService
+      interactiveConversationalAgent,
+      interactiveConversationalAgent.conversationManager,
+      this.sessionService,
+      cliOptions
     );
 
     try {
@@ -267,7 +309,8 @@ export class BACommand extends BaseCommand {
       await interactiveCLI.start(options.repo, existingSessionId);
 
       return {
-        mode: 'interactive',
+        mode: isMultiAgent ? 'multi-agent-interactive' : 'interactive',
+        multiAgent: isMultiAgent,
         repo: options.repo,
         completed: true
       };

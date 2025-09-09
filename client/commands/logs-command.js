@@ -99,8 +99,11 @@ export class LogsCommand extends BaseCommand {
   async showSessionLogs(sessionId, options) {
     console.log(chalk.blue(`📖 Loading logs for session ${sessionId}...`));
 
-    const logs = await this.sessionService.getSessionLogs(sessionId);
+    const sessionData = await this.sessionService.getSessionLogs(sessionId);
     const sessionInfo = await this.sessionService.getSessionInfo(sessionId);
+
+    // Extract interactions array from session data
+    const logs = sessionData.interactions || [];
 
     if (logs.length === 0) {
       console.log(chalk.gray('No logs found for this session.'));
@@ -140,7 +143,7 @@ export class LogsCommand extends BaseCommand {
 
     // Export if requested
     if (options.export) {
-      await this.exportLogs(sessionId, filteredLogs, options);
+      await this.exportLogs(sessionId, filteredLogs);
     }
 
     return { 
@@ -170,8 +173,11 @@ export class LogsCommand extends BaseCommand {
       
       for (const session of sessions.slice(0, 5)) { // Last 5 sessions
         try {
-          const logs = await this.sessionService.getSessionLogs(session.session_id);
+          const sessionData = await this.sessionService.getSessionLogs(session.session_id);
           const sessionInfo = await this.sessionService.getSessionInfo(session.session_id);
+          
+          // Extract interactions array from session data
+          const logs = sessionData.interactions || [];
           
           for (const log of logs) {
             allLogs.push({
@@ -209,7 +215,38 @@ export class LogsCommand extends BaseCommand {
     const timestamp = new Date(log.timestamp).toLocaleTimeString();
     const typeColor = this.getTypeColor(log.type);
     
-    console.log(typeColor(`[${timestamp}] ${log.type.toUpperCase()}: ${log.content}`));
+    // Enhanced display for conversation flow
+    if (log.type === 'user_input') {
+      console.log(chalk.cyan(`[${timestamp}] 👤 USER: ${log.content}`));
+      if (verbose && log.agent_mode) {
+        console.log(chalk.dim(`   Mode: ${log.agent_mode} | Active Agent: ${log.active_agent} | Turn: ${log.turn_count}`));
+      }
+    } else if (log.type === 'agent_response') {
+      const agentIcon = log.agent_type === 'tl' ? '🏗️' : '🤖';
+      const agentName = log.agent_name || (log.agent_type === 'tl' ? 'Tech Lead' : 'BA');
+      console.log(chalk.green(`[${timestamp}] ${agentIcon} ${agentName.toUpperCase()}: ${log.content}`));
+      if (verbose && log.turn_cost !== undefined) {
+        console.log(chalk.dim(`   Turn Cost: $${log.turn_cost.toFixed(4)} | Total: $${log.total_cost.toFixed(4)} | State: ${log.conversation_state}`));
+      }
+    } else if (log.type === 'tl_response') {
+      console.log(chalk.green(`[${timestamp}] 🏗️ TECH LEAD: ${log.content}`));
+      if (verbose && log.focus_area) {
+        console.log(chalk.dim(`   Focus: ${log.focus_area} | Turn: ${log.turn_count} | Cost: $${log.turn_cost.toFixed(4)}`));
+      }
+    } else if (log.type === 'tl_timeout') {
+      console.log(chalk.yellow(`[${timestamp}] ⏱️ TECH LEAD TIMEOUT: ${log.content}`));
+      if (verbose && log.timeout_duration) {
+        console.log(chalk.dim(`   Duration: ${log.timeout_duration} | Fallback: ${log.fallback_action}`));
+      }
+    } else if (log.type === 'tl_error') {
+      console.log(chalk.red(`[${timestamp}] ❌ TECH LEAD ERROR: ${log.content}`));
+      if (verbose && log.error_type) {
+        console.log(chalk.dim(`   Type: ${log.error_type} | Fallback: ${log.fallback_action}`));
+      }
+    } else {
+      // Default display for other log types
+      console.log(typeColor(`[${timestamp}] ${log.type.toUpperCase()}: ${log.content}`));
+    }
     
     if (verbose && log.metadata && Object.keys(log.metadata).length > 0) {
       console.log(chalk.dim(`   Metadata: ${JSON.stringify(log.metadata, null, 2)}`));
@@ -239,7 +276,17 @@ export class LogsCommand extends BaseCommand {
       command_start: chalk.cyan,
       command_end: chalk.green,
       session_created: chalk.magenta,
-      session_closed: chalk.gray
+      session_closed: chalk.gray,
+      user_input: chalk.cyan,
+      agent_response: chalk.green,
+      tl_response: chalk.green,
+      conversation_started: chalk.blue,
+      conversation_continued: chalk.blue,
+      tl_analysis_start: chalk.yellow,
+      tl_analysis_complete: chalk.green,
+      tl_timeout: chalk.yellow,
+      tl_error: chalk.red,
+      cost_summary: chalk.yellow
     };
     
     return colors[type] || chalk.white;
@@ -249,9 +296,8 @@ export class LogsCommand extends BaseCommand {
    * Export logs to a file
    * @param {string} sessionId - Session ID
    * @param {Array} logs - Logs to export
-   * @param {Object} options - Export options
    */
-  async exportLogs(sessionId, logs, options) {
+  async exportLogs(sessionId, logs) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `logs-${sessionId.slice(0, 8)}-${timestamp}.json`;
     const filepath = path.join(process.cwd(), filename);

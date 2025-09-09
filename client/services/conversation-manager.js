@@ -3,7 +3,8 @@ import chalk from 'chalk';
 
 /**
  * Conversation Manager
- * Manages conversational state, history, and flow for BA agent conversations
+ * Manages conversational state, history, and flow for single and multi-agent conversations
+ * Supports BA agent conversations and BA-TL multi-agent collaboration
  */
 export class ConversationManager {
   constructor(logDir) {
@@ -11,36 +12,116 @@ export class ConversationManager {
   }
 
   /**
-   * Initialize a new conversation session
+   * Initialize a new conversation session (single or multi-agent)
    * @param {string} sessionId - Session ID
    * @param {Object} context - Initial context (repo info, initial input)
+   * @param {string} conversationType - Type: 'single' (BA only) or 'multi' (BA-TL)
    * @returns {Promise<void>}
    */
-  async initializeConversation(sessionId, context) {
+  async initializeConversation(sessionId, context, conversationType = 'single') {
     const conversationData = {
       sessionId,
       repo: `${context.repoOwner}/${context.repoName}`,
+      type: conversationType,
       state: 'gathering',
       history: [],
       proposedIssues: [],
       totalCost: 0,
       turnCount: 0,
       createdAt: new Date().toISOString(),
-      lastActivity: new Date().toISOString()
+      lastActivity: new Date().toISOString(),
+      
+      // Token budget management
+      tokenBudget: {
+        initialTokens: parseInt(process.env.MAX_TOKENS_PER_SESSION) || 10000,
+        initialCost: parseFloat(process.env.MAX_COST_PER_SESSION) || 5.00,
+        extensions: [], // Track all token extensions
+        totalAllocatedTokens: parseInt(process.env.MAX_TOKENS_PER_SESSION) || 10000,
+        totalAllocatedCost: parseFloat(process.env.MAX_COST_PER_SESSION) || 5.00
+      }
     };
+
+    // Multi-agent specific properties
+    if (conversationType === 'multi') {
+      conversationData.multiAgent = {
+        activeAgent: context.activeAgent || 'ba', // Current active agent
+        agentHistory: [], // Track which agent spoke when
+        collaborationState: 'active', // active, completed, escalated
+        handoffCount: 0,
+        lastHandoff: null
+      };
+    }
 
     await StateManager.set(sessionId, this.logDir, 'conversation', conversationData);
   }
 
   /**
-   * Store a conversation turn (user-visible only, no raw JSON)
+   * Update token budget for a conversation (when user extends limits)
    * @param {string} sessionId - Session ID
-   * @param {string} speaker - 'user' or 'ba' 
-   * @param {string} message - Clean message content
-   * @param {number} cost - Cost for this turn
+   * @param {number} additionalTokens - Additional tokens to add
+   * @param {number} additionalCost - Additional cost budget to add
    * @returns {Promise<void>}
    */
-  async storeConversationTurn(sessionId, speaker, message, cost = 0) {
+  async updateTokenBudget(sessionId, additionalTokens, additionalCost) {
+    try {
+      const conversation = await StateManager.get(sessionId, this.logDir, 'conversation');
+      
+      // Ensure tokenBudget exists (for older conversations)
+      if (!conversation.tokenBudget) {
+        conversation.tokenBudget = {
+          initialTokens: parseInt(process.env.MAX_TOKENS_PER_SESSION) || 10000,
+          initialCost: parseFloat(process.env.MAX_COST_PER_SESSION) || 5.00,
+          extensions: [],
+          totalAllocatedTokens: parseInt(process.env.MAX_TOKENS_PER_SESSION) || 10000,
+          totalAllocatedCost: parseFloat(process.env.MAX_COST_PER_SESSION) || 5.00
+        };
+      }
+      
+      // Add extension record
+      const extension = {
+        tokens: additionalTokens,
+        cost: additionalCost,
+        timestamp: new Date().toISOString()
+      };
+      
+      conversation.tokenBudget.extensions.push(extension);
+      conversation.tokenBudget.totalAllocatedTokens += additionalTokens;
+      conversation.tokenBudget.totalAllocatedCost += additionalCost;
+      conversation.lastActivity = new Date().toISOString();
+      
+      await StateManager.set(sessionId, this.logDir, 'conversation', conversation);
+      
+      console.log(chalk.blue(`💾 Token budget updated for session ${sessionId}`));
+      
+    } catch (error) {
+      console.log(chalk.yellow(`⚠️  Could not update token budget: ${error.message}`));
+    }
+  }
+
+  /**
+   * Get token budget status for a conversation
+   * @param {string} sessionId - Session ID
+   * @returns {Promise<Object>} Token budget information
+   */
+  async getTokenBudgetStatus(sessionId) {
+    try {
+      const conversation = await StateManager.get(sessionId, this.logDir, 'conversation');
+      return conversation.tokenBudget || null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Store a conversation turn (supports multi-agent conversations)
+   * @param {string} sessionId - Session ID
+   * @param {string} speaker - 'user', 'ba', 'tl', or 'system'
+   * @param {string} message - Clean message content
+   * @param {number} cost - Cost for this turn
+   * @param {Object} metadata - Additional turn metadata
+   * @returns {Promise<Object>} The created turn object
+   */
+  async storeConversationTurn(sessionId, speaker, message, cost = 0, metadata = {}) {
     const conversation = await this.getConversation(sessionId);
     
     const turn = {
@@ -48,13 +129,40 @@ export class ConversationManager {
       speaker,
       message: message.trim(),
       timestamp: new Date().toISOString(),
-      cost
+      cost,
+      metadata
     };
 
     conversation.history.push(turn);
     conversation.turnCount += 1;
     conversation.totalCost += cost;
     conversation.lastActivity = new Date().toISOString();
+
+    // Update multi-agent tracking if applicable
+    if (conversation.type === 'multi' && conversation.multiAgent) {
+      conversation.multiAgent.agentHistory.push({
+        turn: turn.turn,
+        agent: speaker,
+        timestamp: turn.timestamp,
+        handoff: metadata.handoff || false
+      });
+
+      // Update active agent if this is an agent turn
+      if (speaker === 'ba' || speaker === 'tl') {
+        conversation.multiAgent.activeAgent = speaker;
+      }
+
+      // Track handoffs
+      if (metadata.handoff) {
+        conversation.multiAgent.handoffCount += 1;
+        conversation.multiAgent.lastHandoff = {
+          from: metadata.handoffFrom,
+          to: metadata.handoffTo,
+          reason: metadata.handoffReason,
+          timestamp: turn.timestamp
+        };
+      }
+    }
 
     await StateManager.set(sessionId, this.logDir, 'conversation', conversation);
     
@@ -209,5 +317,228 @@ export class ConversationManager {
     // Implementation for future cleanup functionality
     // For now, conversations persist indefinitely as requested
     return 0;
+  }
+
+  // Multi-Agent Conversation Methods
+
+  /**
+   * Record agent handoff in multi-agent conversation
+   * @param {string} sessionId - Session ID
+   * @param {string} fromAgent - Agent handing off ('ba' or 'tl')
+   * @param {string} toAgent - Agent receiving handoff ('ba' or 'tl')
+   * @param {string} reason - Reason for handoff
+   * @param {string} context - Handoff context/message
+   * @returns {Promise<Object>} Handoff record
+   */
+  async recordAgentHandoff(sessionId, fromAgent, toAgent, reason, context) {
+    const handoffMessage = `🔄 Agent handoff: ${fromAgent.toUpperCase()} → ${toAgent.toUpperCase()}\nReason: ${reason}\nContext: ${context}`;
+    
+    const turn = await this.storeConversationTurn(sessionId, 'system', handoffMessage, 0, {
+      handoff: true,
+      handoffFrom: fromAgent,
+      handoffTo: toAgent,
+      handoffReason: reason,
+      handoffContext: context
+    });
+
+    console.log(chalk.blue(`🔄 Agent handoff recorded: ${fromAgent} → ${toAgent}`));
+    
+    return turn;
+  }
+
+  /**
+   * Get multi-agent conversation statistics
+   * @param {string} sessionId - Session ID
+   * @returns {Promise<Object>} Multi-agent statistics
+   */
+  async getMultiAgentStats(sessionId) {
+    const conversation = await this.getConversation(sessionId);
+    
+    if (conversation.type !== 'multi' || !conversation.multiAgent) {
+      return { type: 'single', multiAgent: false };
+    }
+
+    const stats = {
+      type: 'multi',
+      multiAgent: true,
+      activeAgent: conversation.multiAgent.activeAgent,
+      collaborationState: conversation.multiAgent.collaborationState,
+      handoffCount: conversation.multiAgent.handoffCount,
+      lastHandoff: conversation.multiAgent.lastHandoff,
+      agentParticipation: { ba: 0, tl: 0, user: 0, system: 0 }
+    };
+
+    // Count agent participation
+    conversation.history.forEach(turn => {
+      if (stats.agentParticipation[turn.speaker] !== undefined) {
+        stats.agentParticipation[turn.speaker]++;
+      }
+    });
+
+    return stats;
+  }
+
+  /**
+   * Update multi-agent collaboration state
+   * @param {string} sessionId - Session ID
+   * @param {string} newState - New state: 'active', 'completed', 'escalated'
+   * @returns {Promise<void>}
+   */
+  async updateMultiAgentState(sessionId, newState) {
+    const conversation = await this.getConversation(sessionId);
+    
+    if (conversation.type !== 'multi' || !conversation.multiAgent) {
+      throw new Error('Session is not a multi-agent conversation');
+    }
+
+    conversation.multiAgent.collaborationState = newState;
+    conversation.lastActivity = new Date().toISOString();
+
+    if (newState === 'completed' || newState === 'escalated') {
+      conversation.multiAgent.completedAt = new Date().toISOString();
+    }
+
+    await StateManager.set(sessionId, this.logDir, 'conversation', conversation);
+    
+    console.log(chalk.blue(`Multi-agent state updated: ${newState}`));
+  }
+
+  /**
+   * Get agent conversation context (for agent-to-agent communication)
+   * @param {string} sessionId - Session ID
+   * @param {string} targetAgent - Agent requesting context ('ba' or 'tl')
+   * @returns {Promise<Object>} Context tailored for the target agent
+   */
+  async getAgentContext(sessionId, targetAgent) {
+    const conversation = await this.getConversation(sessionId);
+    const baseContext = await this.getConversationContext(sessionId);
+
+    // Add multi-agent specific context
+    if (conversation.type === 'multi' && conversation.multiAgent) {
+      baseContext.multiAgent = {
+        activeAgent: conversation.multiAgent.activeAgent,
+        collaborationState: conversation.multiAgent.collaborationState,
+        handoffCount: conversation.multiAgent.handoffCount,
+        agentHistory: conversation.multiAgent.agentHistory,
+        isMultiAgent: true
+      };
+
+      // Filter history to relevant turns for the target agent
+      baseContext.relevantHistory = conversation.history.filter(turn => {
+        // Include user turns, system turns, and turns from the other agent
+        return turn.speaker === 'user' || 
+               turn.speaker === 'system' || 
+               (targetAgent === 'ba' && turn.speaker === 'tl') ||
+               (targetAgent === 'tl' && turn.speaker === 'ba');
+      });
+    } else {
+      baseContext.multiAgent = { isMultiAgent: false };
+      baseContext.relevantHistory = conversation.history;
+    }
+
+    return baseContext;
+  }
+
+  /**
+   * Format multi-agent conversation history for display
+   * @param {string} sessionId - Session ID
+   * @param {boolean} includeCost - Whether to include cost information
+   * @param {boolean} showHandoffs - Whether to highlight handoffs
+   * @returns {Promise<string>} Formatted conversation history
+   */
+  async formatMultiAgentConversationHistory(sessionId, includeCost = false, showHandoffs = true) {
+    const conversation = await this.getConversation(sessionId);
+    const history = conversation.history || [];
+    
+    const typeLabel = conversation.type === 'multi' ? 'Multi-Agent' : 'Single-Agent';
+    let formatted = chalk.blue(`\n📋 ${typeLabel} Conversation History (Session: ${sessionId})\n`);
+    formatted += chalk.gray(`Repository: ${conversation.repo} • State: ${conversation.state}\n`);
+    
+    if (conversation.type === 'multi' && conversation.multiAgent) {
+      formatted += chalk.gray(`Active Agent: ${conversation.multiAgent.activeAgent.toUpperCase()} • Handoffs: ${conversation.multiAgent.handoffCount}\n`);
+    }
+    
+    formatted += '\n';
+    
+    for (const turn of history) {
+      let speaker;
+      switch (turn.speaker) {
+        case 'user':
+          speaker = '👤 You';
+          break;
+        case 'ba':
+          speaker = '🤖 BA';
+          break;
+        case 'tl':
+          speaker = '🏗️ TL';
+          break;
+        case 'system':
+          speaker = '🔧 System';
+          break;
+        default:
+          speaker = `🤷 ${turn.speaker}`;
+      }
+      
+      const timestamp = new Date(turn.timestamp).toLocaleString();
+      
+      formatted += chalk.cyan(`${speaker} (Turn ${turn.turn}):`);
+      if (includeCost && turn.cost > 0) {
+        formatted += chalk.gray(` [$${turn.cost.toFixed(4)}]`);
+      }
+      
+      // Highlight handoffs
+      if (showHandoffs && turn.metadata?.handoff) {
+        formatted += chalk.yellow(' [HANDOFF]');
+      }
+      
+      formatted += chalk.gray(` ${timestamp}`);
+      formatted += '\n';
+      formatted += `${turn.message}\n\n`;
+    }
+    
+    if (includeCost) {
+      formatted += chalk.yellow(`💰 Total conversation cost: $${conversation.totalCost.toFixed(4)}\n`);
+    }
+    
+    // Add multi-agent summary
+    if (conversation.type === 'multi' && conversation.multiAgent) {
+      formatted += chalk.blue('\n🤝 Multi-Agent Summary:\n');
+      formatted += chalk.gray(`Collaboration State: ${conversation.multiAgent.collaborationState}\n`);
+      formatted += chalk.gray(`Active Agent: ${conversation.multiAgent.activeAgent.toUpperCase()}\n`);
+      formatted += chalk.gray(`Total Handoffs: ${conversation.multiAgent.handoffCount}\n`);
+    }
+    
+    return formatted;
+  }
+
+  /**
+   * Check if conversation is multi-agent
+   * @param {string} sessionId - Session ID
+   * @returns {Promise<boolean>} True if multi-agent conversation
+   */
+  async isMultiAgentConversation(sessionId) {
+    try {
+      const conversation = await this.getConversation(sessionId);
+      return conversation.type === 'multi';
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Get active agent for multi-agent conversation
+   * @param {string} sessionId - Session ID
+   * @returns {Promise<string|null>} Active agent ('ba' or 'tl') or null if not multi-agent
+   */
+  async getActiveAgent(sessionId) {
+    try {
+      const conversation = await this.getConversation(sessionId);
+      if (conversation.type === 'multi' && conversation.multiAgent) {
+        return conversation.multiAgent.activeAgent;
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
   }
 }

@@ -1,5 +1,6 @@
 import { BAAgent } from './ba-agent.js';
 import { ConversationManager } from '../services/conversation-manager.js';
+import { AgentCommunicationService } from '../services/agent-communication-service.js';
 import chalk from 'chalk';
 
 /**
@@ -7,9 +8,24 @@ import chalk from 'chalk';
  * Extends BAAgent to support multi-turn conversations before creating issues
  */
 export class ConversationalBAAgent extends BAAgent {
-  constructor(mcpClientManager, sessionService, config) {
+  constructor(mcpClientManager, sessionService, config, options = {}) {
     super(mcpClientManager, sessionService, config);
     this.conversationManager = new ConversationManager(sessionService.logDir);
+    
+    // Multi-agent support
+    this.multiAgentMode = options.multiAgent || false;
+    this.techLeadAgent = options.techLeadAgent || null;
+    this.interactiveMode = options.interactive || false;
+    
+    // Create communication service with interactive mode
+    this.agentCommunicationService = new AgentCommunicationService(
+      sessionService.logDir, 
+      sessionService,
+      {
+        interactive: this.interactiveMode,
+        verboseCollaboration: options.verboseCollaboration || false
+      }
+    );
   }
 
   getName() {
@@ -28,9 +44,19 @@ export class ConversationalBAAgent extends BAAgent {
   async startConversation(context) {
     console.log(chalk.cyan(`\n🗣️  Starting conversation for ${context.repoOwner}/${context.repoName}`));
     
+    
+    // Declare enhancedContext outside try block so it's accessible in catch
+    let enhancedContext;
+    
     try {
-      // Ensure context has required methods
-      const enhancedContext = this.ensureContextMethods(context);
+      // Ensure context has required methods with proper error handling
+      try {
+        enhancedContext = this.ensureContextMethods(context);
+      } catch (contextError) {
+        console.error(chalk.red(`[ERROR] Failed to enhance context: ${contextError.message}`));
+        console.error(chalk.red(`[ERROR] Context error stack: ${contextError.stack}`));
+        throw new Error(`Context enhancement failed: ${contextError.message}`);
+      }
       
       // Initialize conversation state
       await this.conversationManager.initializeConversation(enhancedContext.sessionId, enhancedContext);
@@ -50,7 +76,7 @@ export class ConversationalBAAgent extends BAAgent {
       const repoAnalysis = await this.analyzeRepository(enhancedContext);
       
       // Generate initial BA response with conversation awareness
-      const baResponse = await this.generateConversationResponse(enhancedContext, repoAnalysis);
+      const baResponse = await this.generateConversationResponse(enhancedContext, repoAnalysis, null);
       
       await this.logInteraction('conversation_started', 'Started conversation', {
         repository: enhancedContext.getRepository(),
@@ -67,8 +93,10 @@ export class ConversationalBAAgent extends BAAgent {
       };
 
     } catch (error) {
+      // Use enhancedContext if available, otherwise fall back to original context
+      const contextForLogging = enhancedContext || context;
       await this.logError(error, { 
-        repository: enhancedContext.getRepository(),
+        repository: contextForLogging.getRepository ? contextForLogging.getRepository() : `${context.repoOwner}/${context.repoName}`,
         operation: 'start_conversation'
       });
       throw new Error(`Failed to start conversation: ${error.message}`);
@@ -287,7 +315,66 @@ Latest user input: "${context.userInput}"
 Please continue the conversation by responding to the user's latest input while building on our previous discussion.`;
     }
 
-    return await this.generateLLMResponse('ba', systemPrompt, userPrompt, context);
+    // Generate initial BA response
+    const sessionContext = conversationContext ? { sessionId: conversationContext.sessionId } : { sessionId: context.sessionId };
+    const baResponse = await this.generateLLMResponse('ba', systemPrompt, userPrompt, sessionContext);
+    
+    // If in multi-agent mode, check if we need technical input
+    if (this.multiAgentMode && this.techLeadAgent && this.needsTechnicalInput(baResponse.content)) {
+      console.log(chalk.blue('\n🔍 BA detected technical questions, consulting Tech Lead...'));
+      
+      try {
+        // Show what questions BA is sending to TL
+        const technicalQuestions = this.extractTechnicalQuestions(baResponse.content, conversationContext);
+        
+        if (this.interactiveMode) {
+          console.log(chalk.cyan('\n📋 Questions being sent to Tech Lead:'));
+          console.log(chalk.white(`"${technicalQuestions}"`));
+          console.log(chalk.gray('\n🏗️  Tech Lead processing... (this may take up to 90 seconds)'));
+        }
+        
+        // Get technical answers from TL agent
+        const techAnswers = await this.consultTechLead(context, baResponse.content, conversationContext);
+        
+        if (techAnswers) {
+          // Show TL response before integration (in interactive mode)
+          if (this.interactiveMode) {
+            // Note: Full TL response is already shown by AgentCommunicationService.displayExchange()
+            // Just add integration step indicator
+            console.log(chalk.blue('\n🔄 Integrating technical guidance into business response...'));
+          }
+          
+          // Integrate tech answers into BA response
+          const enhancedResponse = await this.integrateTechnicalAnswers(baResponse.content, techAnswers, context);
+          
+          // Store the agent collaboration in conversation
+          if (conversationContext) {
+            await this.conversationManager.storeConversationTurn(
+              context.sessionId,
+              'system',
+              `BA consulted TL: ${techAnswers.substring(0, 100)}...`,
+              0,
+              { agent_collaboration: true, ba_question: true, tl_response: true }
+            );
+          }
+          
+          // Show completion message in interactive mode
+          if (this.interactiveMode) {
+            console.log(chalk.green('\n✅ BA + TL collaboration complete'));
+          }
+          
+          return {
+            content: enhancedResponse,
+            usage: baResponse.usage // Keep original usage for cost tracking
+          };
+        }
+      } catch (error) {
+        console.log(chalk.yellow(`⚠️ Tech Lead consultation failed: ${error.message}`));
+        // Continue with original BA response if TL consultation fails
+      }
+    }
+
+    return baResponse;
   }
 
   /**
@@ -411,5 +498,210 @@ Generate actionable GitHub issues that address the user's needs as discussed in 
   async displayConversationHistory(sessionId, includeCost = false) {
     const formatted = await this.conversationManager.formatConversationHistory(sessionId, includeCost);
     console.log(formatted);
+  }
+
+  // Multi-Agent Collaboration Methods
+
+  /**
+   * Detect if BA response contains technical questions that need TL input
+   * @param {string} response - BA response content
+   * @returns {boolean} True if technical input needed
+   */
+  needsTechnicalInput(response) {
+    const technicalKeywords = [
+      // Tech stack questions
+      'tech stack', 'language', 'framework', 'technology',
+      
+      // Testing specific
+      'testing framework', 'test runner', 'jest', 'pytest', 'junit',
+      'coverage', 'mocking', 'test data', 'fixtures',
+      
+      // Development workflow
+      'ci/cd', 'github actions', 'pipeline', 'deployment',
+      'build tool', 'package manager', 'dependencies',
+      
+      // Architecture questions
+      'architecture', 'design patterns', 'best practices',
+      'performance', 'security', 'scalability',
+      
+      // Specific tooling
+      'what.*use', 'which.*tool', 'how.*run', 'what.*setup'
+    ];
+
+    const responseText = response.toLowerCase();
+    
+    // Check for technical question patterns
+    return technicalKeywords.some(keyword => responseText.includes(keyword)) ||
+           // Check for question patterns about technical topics
+           (responseText.includes('?') && technicalKeywords.some(keyword => 
+             responseText.includes(keyword)
+           ));
+  }
+
+  /**
+   * Consult Tech Lead agent for technical answers to BA questions
+   * @param {Object} context - Current conversation context
+   * @param {string} baResponse - BA response with technical questions
+   * @param {Object} conversationContext - Full conversation context
+   * @returns {Promise<string>} TL technical answers
+   */
+  async consultTechLead(context, baResponse, conversationContext) {
+    try {
+      // Initialize agent communication if needed
+      if (!await this.agentCommunicationService.communicationExists(context.sessionId)) {
+        await this.agentCommunicationService.initializeCommunication(
+          context.sessionId,
+          'ba',
+          'tl',
+          { 
+            repository: `${context.repoOwner}/${context.repoName}`,
+            task: 'technical_consultation',
+            conversation_context: conversationContext ? conversationContext.state : 'initial'
+          }
+        );
+      }
+
+      // Extract technical questions from BA response
+      const technicalQuestions = this.extractTechnicalQuestions(baResponse, conversationContext);
+      
+      // Create enhanced context for TL agent
+      const tlContext = {
+        sessionId: context.sessionId,
+        repoOwner: context.repoOwner,
+        repoName: context.repoName,
+        description: technicalQuestions,
+        businessRequirements: conversationContext ? 
+          conversationContext.history.filter(turn => turn.speaker === 'user')
+            .map(turn => turn.message).join('\n') : context.initialInput,
+        taskType: 'ba_consultation',
+        focusArea: this.detectTechnicalFocus(technicalQuestions),
+        originalUserRequest: conversationContext ? 
+          conversationContext.history[0]?.message : context.initialInput
+      };
+
+      // Enhance context with methods expected by TL agent
+      const enhancedTlContext = this.techLeadAgent.ensureContextMethods(tlContext);
+
+      // Get TL response
+      const tlResult = await this.techLeadAgent.execute(enhancedTlContext);
+
+      // Send BA question to TL via communication service
+      await this.agentCommunicationService.sendMessage(
+        context.sessionId,
+        'ba',
+        'tl', 
+        'question',
+        technicalQuestions,
+        { 
+          cost: tlResult.cost || 0,
+          focus_area: this.detectTechnicalFocus(technicalQuestions),
+          consultation_type: 'ba_technical_questions'
+        }
+      );
+
+      // Process TL response via communication service
+      const tlResponse = tlResult.summary || tlResult.technical_analysis || 'Technical analysis completed';
+      
+      await this.agentCommunicationService.processMessage(
+        context.sessionId,
+        'tl',
+        tlResponse,
+        { 
+          cost: tlResult.cost || 0,
+          response_type: 'technical_answers' 
+        }
+      );
+
+      console.log(chalk.green('✅ Tech Lead consultation completed'));
+      
+      return tlResponse;
+      
+    } catch (error) {
+      console.log(chalk.red(`❌ TL consultation failed: ${error.message}`));
+      throw error;
+    }
+  }
+
+  /**
+   * Extract technical questions from BA response
+   * @param {string} baResponse - BA response content
+   * @param {Object} conversationContext - Conversation context
+   * @returns {string} Extracted technical questions
+   */
+  extractTechnicalQuestions(baResponse, conversationContext) {
+    // Split response into sentences and find technical questions
+    const sentences = baResponse.split(/[.!?]+/).filter(s => s.trim());
+    const technicalSentences = sentences.filter(sentence => 
+      sentence.includes('?') && this.needsTechnicalInput(sentence)
+    );
+
+    if (technicalSentences.length > 0) {
+      return technicalSentences.join(' ') + 
+        (conversationContext ? `\n\nContext: User wants to ${conversationContext.history[0]?.message}` : '');
+    }
+
+    // Fallback: ask TL to help with the general technical aspects
+    const userRequest = conversationContext ? 
+      conversationContext.history.find(turn => turn.speaker === 'user')?.message : 
+      'technical implementation';
+      
+    return `Please provide technical guidance for: ${userRequest}. What are the recommended approaches, tools, and best practices?`;
+  }
+
+  /**
+   * Detect technical focus area from questions
+   * @param {string} questions - Technical questions
+   * @returns {string} Focus area
+   */
+  detectTechnicalFocus(questions) {
+    const text = questions.toLowerCase();
+    
+    if (text.includes('test') || text.includes('coverage')) return 'testing';
+    if (text.includes('deploy') || text.includes('ci') || text.includes('pipeline')) return 'deployment';
+    if (text.includes('performance') || text.includes('scale')) return 'performance';
+    if (text.includes('security') || text.includes('auth')) return 'security';
+    if (text.includes('database') || text.includes('data')) return 'data';
+    if (text.includes('api') || text.includes('service')) return 'api';
+    if (text.includes('ui') || text.includes('frontend')) return 'frontend';
+    
+    return 'general';
+  }
+
+  /**
+   * Integrate TL technical answers into BA response
+   * @param {string} baResponse - Original BA response
+   * @param {string} tlAnswers - TL technical answers
+   * @param {Object} context - Current context
+   * @returns {string} Enhanced response with TL answers integrated
+   */
+  async integrateTechnicalAnswers(baResponse, tlAnswers, context) {
+    // Use LLM to naturally integrate the technical answers
+    const systemPrompt = 'You are helping integrate business and technical perspectives in a conversation.';
+    const integrationPrompt = `You are a Business Analyst who just received technical expertise from a Tech Lead. 
+Integrate the technical answers naturally into your business analysis response.
+
+Original BA Response:
+${baResponse}
+
+Tech Lead Answers:
+${tlAnswers}
+
+Please provide a cohesive response that:
+1. Maintains the conversational BA tone
+2. Incorporates the technical guidance naturally
+3. Continues to focus on requirements gathering
+4. Doesn't overwhelm the user with too much technical detail
+5. Shows collaboration between BA and TL perspectives
+
+Keep the business analyst voice while including the technical insights.`;
+
+    try {
+      const integrationResponse = await this.generateLLMResponse('ba', systemPrompt, integrationPrompt, context);
+      return integrationResponse.content;
+    } catch (error) {
+      console.log(chalk.yellow(`⚠️ Response integration failed, using TL answers directly`));
+      // Fallback: append TL answers with clear attribution
+      return `${baResponse}\n\n---\n\n**Tech Lead Input:** ${tlAnswers}`;
+    }
   }
 }

@@ -110,7 +110,9 @@ export class SessionService {
     }
 
     try {
-      await Logger.logInteraction(sessionId, this.logDir, type, content, metadata);
+      // Extract agent role from metadata or use a default
+      const agentRole = metadata.agent_role || metadata.agent_type || 'user';
+      await Logger.logInteraction(sessionId, this.logDir, type, content, agentRole, metadata);
     } catch (error) {
       console.warn(`Warning: Could not log interaction: ${error.message}`);
     }

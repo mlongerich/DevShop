@@ -13,6 +13,7 @@ import { MCPClientManager } from './services/mcp-client-manager.js';
 
 // Commands
 import { BACommand } from './commands/ba-command.js';
+import { TLCommand } from './commands/tl-command.js';
 import { DevCommand } from './commands/dev-command.js';
 import { TestCommand } from './commands/test-command.js';
 import { LogsCommand } from './commands/logs-command.js';
@@ -54,6 +55,7 @@ class DevShopOrchestrator {
       // Initialize command instances
       this.commands = {
         ba: new BACommand(this.configService, this.sessionService, this.mcpClientManager),
+        tl: new TLCommand(this.configService, this.sessionService, this.mcpClientManager),
         dev: new DevCommand(this.configService, this.sessionService, this.mcpClientManager),
         test: new TestCommand(this.configService, this.sessionService, this.mcpClientManager),
         logs: new LogsCommand(this.configService, this.sessionService, this.mcpClientManager),
@@ -152,8 +154,8 @@ async function main() {
 
   program
     .name('devshop')
-    .description('DevShop - AI-powered development shop with BA and Developer agents')
-    .version('1.1.0');
+    .description('DevShop - AI-powered development shop with multi-agent BA-TL collaboration')
+    .version('1.1.4');
 
   // Setup command - doesn't need full initialization
   program
@@ -182,6 +184,7 @@ async function main() {
     .option('--session <id>', 'Continue existing conversation session')
     .option('--finalize', 'Finalize conversation and create GitHub issues')
     .option('--interactive', 'Enter interactive real-time conversation mode')
+    .option('--multi-agent', 'Enable multi-agent mode (BA + Tech Lead collaboration) - requires --interactive')
     .option('--verbose', 'Verbose output with detailed information')
     .action(async (input, options) => {
       try {
@@ -190,6 +193,11 @@ async function main() {
         const [owner, repo] = options.repo.split('/');
         if (!owner || !repo) {
           throw new Error('Repository must be in format owner/repo-name');
+        }
+
+        // Validate multi-agent flag
+        if (options.multiAgent && !options.interactive) {
+          throw new Error('--multi-agent flag requires --interactive mode');
         }
 
         // Handle conversation vs legacy mode parameters
@@ -203,6 +211,7 @@ async function main() {
         // Route interactive, conversation, or legacy mode
         if (options.interactive) {
           commandOptions.interactive = true;
+          commandOptions.multiAgent = options.multiAgent;
         } else if (options.conversation) {
           commandOptions.conversation = options.conversation;
         } else if (options.session) {
@@ -218,6 +227,66 @@ async function main() {
         }
 
         await orchestrator.executeCommand('ba', commandOptions);
+      } catch (error) {
+        console.error(chalk.red(`Error: ${error.message}`));
+        process.exit(1);
+      }
+    });
+
+  // Tech Lead command
+  program
+    .command('tl')
+    .description('Run Tech Lead agent for technical analysis and architecture decisions')
+    .requiredOption('--repo <repo>', 'Repository in format owner/repo-name')
+    .argument('[input]', 'Feature description for analysis or collaboration input')
+    .option('--issue <number>', 'GitHub issue number to analyze', parseInt)
+    .option('--session <id>', 'Continue existing collaboration session')
+    .option('--focus-area <area>', 'Technical focus area: architecture, performance, security')
+    .option('--generate-adr', 'Generate Architectural Decision Record from analysis')
+    .option('--collaborate', 'Start multi-agent collaboration with BA agent')
+    .option('--verbose', 'Verbose output with detailed information')
+    .action(async (input, options) => {
+      try {
+        await orchestrator.initialize();
+
+        const [owner, repo] = options.repo.split('/');
+        if (!owner || !repo) {
+          throw new Error('Repository must be in format owner/repo-name');
+        }
+
+        // Handle different TL workflow modes
+        const commandOptions = {
+          repo: options.repo,
+          verbose: options.verbose,
+          session: options.session,
+          issue: options.issue,
+          focusArea: options.focusArea,
+          generateAdr: options.generateAdr,
+          collaborate: options.collaborate
+        };
+
+        // Route based on mode
+        if (options.session) {
+          // Continuing existing session
+          commandOptions.userInput = input;
+          if (!input) {
+            throw new Error('Input is required to continue collaboration session');
+          }
+        } else if (options.collaborate) {
+          // Starting new collaboration
+          commandOptions.description = input;
+        } else if (options.issue) {
+          // Issue analysis mode
+          // No additional input needed
+        } else {
+          // Standalone analysis mode
+          commandOptions.description = input;
+          if (!input) {
+            throw new Error('Feature description is required for tech lead analysis');
+          }
+        }
+
+        await orchestrator.executeCommand('tl', commandOptions);
       } catch (error) {
         console.error(chalk.red(`Error: ${error.message}`));
         process.exit(1);

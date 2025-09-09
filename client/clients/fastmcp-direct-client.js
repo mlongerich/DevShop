@@ -144,10 +144,12 @@ class FastMCPDirectClient extends EventEmitter {
         params
       };
 
+      // Use longer timeout for LLM calls that can take more time
+      const timeoutMs = method === 'tools/call' ? 90000 : 30000; // 90s for LLM calls, 30s for others
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`Request timeout: ${method}`));
-      }, 30000); // 30 second timeout
+      }, timeoutMs);
 
       this.pendingRequests.set(id, { resolve, reject, timeout });
 

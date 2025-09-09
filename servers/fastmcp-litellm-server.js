@@ -66,10 +66,11 @@ async function createFastMCPServer() {
           throw new Error(`Model ${model} is not supported. Available models: ${allModels.slice(0, 5).join(', ')}`);
         }
 
-        // Check limits before processing
+        // Check limits for usage tracking (non-blocking)
         const limitsCheck = providerManager.checkLimits(effectiveSessionId, max_tokens || 1000);
         if (!limitsCheck.within_limits) {
-          throw new Error(`Request would exceed limits. Current usage: ${limitsCheck.current_usage.tokens} tokens, ${limitsCheck.current_usage.cost} cost`);
+          // Log usage info but allow request to proceed for graceful client-side handling
+          console.log(`⚠️ Usage approaching limits - Session: ${effectiveSessionId}, Tokens: ${limitsCheck.current_usage.tokens}/${limitsCheck.limits.max_tokens}, Cost: $${limitsCheck.current_usage.cost.toFixed(4)}/$${limitsCheck.limits.max_cost.toFixed(2)}`);
         }
 
         // Get appropriate provider with enhanced error handling
@@ -120,6 +121,7 @@ async function createFastMCPServer() {
             timestamp: new Date().toISOString(),
             streaming_enabled: stream || false
           },
+          limits_before: limitsCheck,
           limits_after: providerManager.checkLimits(effectiveSessionId, 0)
         };
 
