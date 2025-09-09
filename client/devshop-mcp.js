@@ -177,10 +177,13 @@ async function main() {
     .command('ba')
     .description('Run Business Analyst agent for requirements analysis')
     .requiredOption('--repo <repo>', 'Repository in format owner/repo-name')
-    .argument('<description>', 'Feature description for analysis')
-    .option('--session <id>', 'Existing session ID to resume')
+    .argument('[input]', 'Feature description (legacy mode) or conversation input')
+    .option('--conversation <input>', 'Start new conversation with this input')
+    .option('--session <id>', 'Continue existing conversation session')
+    .option('--finalize', 'Finalize conversation and create GitHub issues')
+    .option('--interactive', 'Enter interactive real-time conversation mode')
     .option('--verbose', 'Verbose output with detailed information')
-    .action(async (description, options) => {
+    .action(async (input, options) => {
       try {
         await orchestrator.initialize();
 
@@ -189,12 +192,30 @@ async function main() {
           throw new Error('Repository must be in format owner/repo-name');
         }
 
+        // Handle conversation vs legacy mode parameters
         const commandOptions = {
           repo: options.repo,
-          description,
+          verbose: options.verbose,
           session: options.session,
-          verbose: options.verbose
+          finalize: options.finalize
         };
+
+        // Route interactive, conversation, or legacy mode
+        if (options.interactive) {
+          commandOptions.interactive = true;
+        } else if (options.conversation) {
+          commandOptions.conversation = options.conversation;
+        } else if (options.session) {
+          commandOptions.userInput = input;
+        } else if (options.finalize) {
+          // Finalize mode - just needs session ID
+        } else {
+          // Legacy mode - requires description
+          commandOptions.description = input;
+          if (!input) {
+            throw new Error('Feature description is required for legacy mode. Use --conversation for conversation mode.');
+          }
+        }
 
         await orchestrator.executeCommand('ba', commandOptions);
       } catch (error) {

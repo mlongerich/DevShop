@@ -6,7 +6,7 @@ DevShop 1.1 is a completely refactored implementation featuring modern service a
 
 ## 🎯 What Does DevShop Do?
 
-- **BA Agent**: Analyzes user requirements and creates detailed GitHub issues
+- **BA Agent**: Analyzes user requirements through single-shot analysis or multi-turn conversations and creates detailed GitHub issues
 - **Developer Agent**: Reads GitHub issues and implements features with clean code
 - **Self-Improvement**: Can work on its own codebase to add new capabilities
 - **Full Observability**: Logs all agent interactions, costs, and decisions
@@ -25,6 +25,7 @@ devshop/
 │   │   ├── config-service.js       # Configuration management
 │   │   ├── session-service.js      # Session lifecycle management
 │   │   ├── mcp-client-manager.js   # MCP client factory & management
+│   │   ├── conversation-manager.js # Conversational state management
 │   │   └── test-service.js         # System testing & validation
 │   ├── commands/                   # Command Pattern Implementation
 │   │   ├── base-command.js         # Abstract base command
@@ -35,7 +36,8 @@ devshop/
 │   │   └── setup-command.js        # Initial setup
 │   ├── agents/                     # Agent Abstraction Layer
 │   │   ├── base-agent.js           # Abstract base agent
-│   │   ├── ba-agent.js             # Business analyst agent
+│   │   ├── ba-agent.js             # Business analyst agent (single-shot)
+│   │   ├── conversational-ba-agent.js # Conversational BA agent
 │   │   └── developer-agent.js      # Developer agent
 │   ├── clients/                    # Direct MCP Clients
 │   │   ├── github-direct-client.js # GitHub MCP integration
@@ -139,7 +141,11 @@ devshop/
 
 1. **Try the BA Agent** (creates requirements and GitHub issues):
    ```bash
+   # Single-shot mode (traditional)
    npm run ba -- --repo=your-org/your-repo "Add user authentication system"
+   
+   # OR conversational mode (new in v1.1.4)
+   npm run ba -- --repo=your-org/your-repo --conversation "I need help with authentication"
    ```
 
 2. **Try the Developer Agent** (implements features from issues):
@@ -156,10 +162,23 @@ devshop/
 
 ### Business Analyst Agent
 
-The BA Agent analyzes your requests and creates detailed requirements:
+The BA Agent analyzes your requests and creates detailed requirements through both single-shot analysis and multi-turn conversations:
 
+**🆕 Conversational Mode (v1.1.4):**
 ```bash
-# Analyze a feature request
+# Start a new conversation for iterative requirements gathering
+npm run ba -- --repo=myorg/myapp --conversation "I need help adding authentication"
+
+# Continue the conversation with follow-up questions
+npm run ba -- --repo=myorg/myapp --session=abc-123 "I want to use OAuth with Google"
+
+# Finalize conversation and create GitHub issues
+npm run ba -- --repo=myorg/myapp --session=abc-123 --finalize
+```
+
+**Single-shot Mode (Legacy):**
+```bash
+# Analyze a feature request immediately
 npm run ba -- --repo=myorg/myapp "Add real-time notifications"
 
 # Create requirements for a bug fix
@@ -167,12 +186,6 @@ npm run ba -- --repo=myorg/myapp "Fix memory leak in background processing"
 
 # Analyze existing codebase for improvements
 npm run ba -- --repo=myorg/myapp "Optimize database queries for better performance"
-```
-
-**New v1.1 Options:**
-```bash
-# Resume an existing session
-npm run ba -- --repo=myorg/myapp --session=abc-123-def "Continue analysis"
 
 # Verbose output with detailed information
 npm run ba -- --repo=myorg/myapp --verbose "Add user dashboard"
@@ -183,6 +196,22 @@ The BA Agent will:
 - Ask clarifying questions if needed
 - Create a detailed GitHub issue with requirements
 - Include acceptance criteria and technical considerations
+
+#### 🆕 Conversational Features (v1.1.4)
+
+The conversational BA mode provides powerful new capabilities for iterative requirements gathering:
+
+**Key Benefits:**
+- **Multi-turn Conversations**: Natural back-and-forth dialogue for complex requirements
+- **Context Awareness**: BA remembers previous conversation turns and builds understanding
+- **Cost Tracking**: See per-turn and cumulative conversation costs
+- **Persistent Sessions**: Resume conversations anytime, sessions never expire
+- **Intelligent Finalization**: Creates comprehensive GitHub issues from conversation history
+
+**Typical Workflow:**
+1. **Start**: `npm run ba -- --repo=org/repo --conversation "I want to add user authentication"`
+2. **Refine**: `npm run ba -- --repo=org/repo --session=abc-123 "Actually, I prefer OAuth over basic auth"`
+3. **Finalize**: `npm run ba -- --repo=org/repo --session=abc-123 --finalize`
 
 ### Developer Agent
 

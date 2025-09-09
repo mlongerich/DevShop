@@ -3,6 +3,7 @@
 This file provides context for Claude Code when working on the DevShop project.
 
 ## Project Overview
+
 DevShop 1.1 is a completely refactored self-improving development shop using MCP (Model Context Protocol) and AI agents with modern service architecture. It features:
 
 - **Service Layer Architecture**: Clean separation of concerns with dedicated services
@@ -14,22 +15,27 @@ DevShop 1.1 is a completely refactored self-improving development shop using MCP
 ## Architecture (v1.1)
 
 ### Service Layer
+
 - `client/services/config-service.js` - Configuration management and environment variable resolution
 - `client/services/session-service.js` - Session lifecycle management and logging coordination
 - `client/services/mcp-client-manager.js` - MCP client factory and connection management
 - `client/services/test-service.js` - System testing and validation orchestration
+- `client/services/conversation-manager.js` - Conversational state and history management
 
 ### Command Layer (Command Pattern)
+
 - `client/commands/base-command.js` - Abstract base command with common functionality
-- `client/commands/ba-command.js` - Business analyst workflow command
+- `client/commands/ba-command.js` - Business analyst workflow command (both single-shot and conversational)
 - `client/commands/dev-command.js` - Developer workflow command
 - `client/commands/test-command.js` - System testing and diagnostics command
 - `client/commands/logs-command.js` - Log viewing and management command
 - `client/commands/setup-command.js` - Initial setup and configuration command
 
 ### Agent Layer (Abstract Base Classes)
+
 - `client/agents/base-agent.js` - Abstract base agent with common interfaces
-- `client/agents/ba-agent.js` - Business analyst agent implementation
+- `client/agents/ba-agent.js` - Business analyst agent implementation (single-shot mode)
+- `client/agents/conversational-ba-agent.js` - Conversational BA agent for multi-turn requirements gathering
 - `client/agents/developer-agent.js` - Developer agent implementation
 
 ### Provider Layer (Strategy Pattern)
@@ -48,6 +54,7 @@ DevShop 1.1 is a completely refactored self-improving development shop using MCP
 ## Commands to Remember
 
 ### Setup and Testing
+
 ```bash
 npm run setup          # Initial configuration with setup wizard
 npm run setup --force  # Force overwrite existing configuration
@@ -59,11 +66,16 @@ npm run status         # Quick system health check
 ```
 
 ### Development Workflows
+
 ```bash
-# Business Analyst workflows
+# Business Analyst workflows - Single-shot mode (legacy)
 npm run ba -- --repo=org/repo "feature description"
-npm run ba -- --repo=org/repo --verbose "detailed analysis request" 
-npm run ba -- --repo=org/repo --session=abc-123 "continue analysis"
+npm run ba -- --repo=org/repo --verbose "detailed analysis request"
+
+# Business Analyst workflows - Conversational mode
+npm run ba -- --repo=org/repo --conversation "I need help adding a login system"
+npm run ba -- --repo=org/repo --session=abc-123 "I want to use OAuth instead"
+npm run ba -- --repo=org/repo --session=abc-123 --finalize
 
 # Developer workflows
 npm run dev -- --repo=org/repo --issue=N
@@ -73,6 +85,7 @@ npm run dev -- --repo=org/repo --session=def-456 --verbose
 ```
 
 ### Log Management
+
 ```bash
 npm run logs --list              # List all sessions
 npm run logs --session=<id>     # View specific session
@@ -83,6 +96,7 @@ npm run logs --errors           # Show only error logs
 ```
 
 ### System Management
+
 ```bash
 npm run status                   # System health overview
 DEBUG=1 npm run test --verbose   # Debug mode testing
@@ -91,12 +105,46 @@ npm run github-server:stop      # Stop GitHub MCP server
 ```
 
 ### Container Security Management
+
 ```bash
 npm run fastmcp:container       # Start secure FastMCP container
 npm run fastmcp:container:stop  # Stop containerized FastMCP server
 npm run fastmcp:container:logs  # Monitor container logs
 npm run test:security           # Test container security configuration
 ```
+
+## Conversational BA Agent (New in v1.1.4)
+
+DevShop now supports multi-turn conversations with the Business Analyst agent for iterative requirements gathering.
+
+### Conversation Workflow
+
+```bash
+# Start a new conversation
+npm run ba -- --repo=org/repo --conversation "I need help adding authentication"
+
+# Continue the conversation with follow-up questions
+npm run ba -- --repo=org/repo --session=abc-123 "I want to use OAuth with Google"
+
+# Finalize conversation and create GitHub issues
+npm run ba -- --repo=org/repo --session=abc-123 --finalize
+```
+
+### Key Features
+
+- **Multi-turn Conversations**: Iterative requirements gathering with context awareness
+- **Cost Tracking**: Per-turn and cumulative conversation costs displayed
+- **Persistent Sessions**: Conversations don't expire and can be resumed anytime
+- **Automatic Issue Creation**: Finalize conversations to generate comprehensive GitHub issues
+- **Backward Compatibility**: Legacy single-shot mode continues to work unchanged
+
+### Conversation States
+
+- **gathering**: Initial requirements collection phase
+- **clarifying**: BA asking follow-up questions for clarification
+- **proposing**: BA ready to propose specific issues
+- **ready_to_finalize**: All requirements gathered, ready for issue creation
+- **finalized**: Conversation complete with issues created
 
 ## Model Configuration
 
@@ -154,25 +202,31 @@ npm run ba -- --repo=your-org/repo --verbose "test request"
 8. `client/commands/dev-command.js` - Developer workflow with code implementation
 
 ### Agent Framework
+
 9. `client/agents/base-agent.js` - Abstract base for all AI agents
 10. `client/agents/ba-agent.js` - Business analyst agent with GitHub integration
-11. `client/agents/developer-agent.js` - Developer agent with code generation
+11. `client/agents/conversational-ba-agent.js` - Conversational BA agent for multi-turn requirements gathering
+12. `client/agents/developer-agent.js` - Developer agent with code generation
 
 ### MCP Client Layer
-12. `client/clients/fastmcp-direct-client.js` - **FastMCP client** - Enhanced session management
-13. `client/clients/github-direct-client.js` - Direct GitHub MCP client (bypasses SDK issues)
+
+13. `client/clients/fastmcp-direct-client.js` - **FastMCP client** - Enhanced session management
+14. `client/clients/github-direct-client.js` - Direct GitHub MCP client (bypasses SDK issues)
 
 ### Provider Architecture
+
 15. `servers/providers/provider-factory.js` - Strategy pattern for LLM provider creation
 16. `servers/fastmcp-litellm-server.js` - **FastMCP server** - Modern FastMCP implementation
 
 ### Utilities and Configuration
+
 17. `utils/logger.js` - File-based logging utility functions
 18. `utils/state-manager.js` - JSON file-based state management
 19. `config/default.json` - Configuration template with multi-provider settings
 20. `config/fastmcp.json` - **FastMCP configuration (recommended)** - Enhanced session features
 
 ### Container Security Files
+
 21. `servers/Dockerfile.fastmcp` - **Security-hardened FastMCP container** - Multi-stage build with security
 22. `docker-compose.fastmcp.yml` - **Container orchestration** - Security policies and resource limits
 23. `scripts/start-fastmcp-server.sh` - **Secure container startup** - Docker secrets and validation
@@ -182,31 +236,37 @@ npm run ba -- --repo=your-org/repo --verbose "test request"
 ## Design Patterns Applied
 
 ### Strategy Pattern
+
 - **LLM Providers**: Pluggable provider implementations (OpenAI, Anthropic, Google)
 - **Model Selection**: Agent-specific optimal model selection
 - **Cost Optimization**: Provider switching based on cost/performance
 
 ### Factory Pattern
+
 - **Provider Creation**: `ProviderFactory` creates appropriate provider instances
 - **MCP Client Creation**: `MCPClientManager` creates and manages client connections
 - **Command Instantiation**: Orchestrator creates command instances
 
 ### Command Pattern
+
 - **CLI Operations**: Each CLI command is a separate class with `execute()` method
 - **Server Tools**: Server operations implemented as command classes
 - **Undo/Redo Ready**: Command structure supports future undo functionality
 
 ### Decorator Pattern
+
 - **Usage Tracking**: `UsageTrackingDecorator` wraps provider calls
 - **Cost Monitoring**: Transparent cost tracking across all LLM operations
 - **Performance Metrics**: Request/response timing decoration
 
 ### Abstract Base Classes
+
 - **Consistent Interfaces**: `BaseCommand`, `BaseAgent`, `BaseProvider`
 - **Shared Functionality**: Common error handling and logging
 - **Extension Points**: Easy to add new commands, agents, providers
 
 ### Dependency Injection
+
 - **Service Composition**: Services injected into commands and agents
 - **Testability**: Easy mocking and testing of individual components
 - **Loose Coupling**: Components depend on interfaces, not implementations
@@ -214,11 +274,13 @@ npm run ba -- --repo=your-org/repo --verbose "test request"
 ## When Making Changes
 
 ### Adding New Components
+
 - **Commands**: Extend `BaseCommand`, implement `execute()`, add to orchestrator
 - **Agents**: Extend `BaseAgent`, implement `execute()`, create corresponding command
 - **Providers**: Extend `BaseProvider`, implement provider API, add to factory
 
 ### Testing Guidelines
+
 - **Unit Tests**: Test individual services and commands in isolation
 - **Integration Tests**: Test command workflows end-to-end
 - **Provider Tests**: Test each LLM provider integration
@@ -227,12 +289,14 @@ npm run ba -- --repo=your-org/repo --verbose "test request"
 - **FastMCP Tests**: Use `npm run test:fastmcp:quick` for FastMCP validation
 
 ### Code Quality
+
 - **Follow Patterns**: Use existing design patterns consistently
 - **Error Handling**: Use service layer error handling and logging
 - **Documentation**: Update this file and README.md for architectural changes
 - **Separation of Concerns**: Keep services, commands, and agents focused
 
 ### Debugging and Diagnostics
+
 - **System Status**: Use `npm run status` for quick health check
 - **Comprehensive Testing**: Use `npm test --full --verbose` for detailed diagnostics
 - **Session Debugging**: Use `npm run logs --session=<id> --verbose` for workflow analysis
@@ -260,9 +324,18 @@ npm run ba -- --repo=your-org/repo --verbose "test request"
 - **Graceful Degradation**: System continues working if individual components fail
 - **Health Monitoring**: Built-in diagnostics and status reporting
 
-## Recent Improvements (v1.1.3)
+## Recent Improvements
 
-### Response Formatting Enhancement
+### v1.1.4 - Conversational BA Agent
+
+- **Multi-turn Conversations**: Complete conversation system for iterative requirements gathering
+- **Conversation State Management**: Persistent conversation sessions with state tracking
+- **Cost Tracking**: Per-turn and cumulative conversation cost monitoring
+- **Automatic Issue Creation**: Finalize conversations to generate comprehensive GitHub issues
+- **Backward Compatibility**: Legacy single-shot mode preserved alongside new conversation features
+
+### v1.1.3 - Response Formatting Enhancement
+
 - **Clean Output Display**: LLM responses now show formatted markdown instead of raw JSON
 - **Escape Sequence Processing**: Automatic conversion of `\\n` → newlines, `\\\"` → quotes
 - **FastMCP Response Parsing**: Fixed nested JSON structure parsing for proper content extraction
