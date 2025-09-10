@@ -702,4 +702,122 @@ describe('DocumentService GitHub MCP Integration', () => {
     expect(adrContent).toContain('## Architecture Decisions');
     expect(adrContent).toContain('### Use clean architecture patterns');
   });
+
+  test('should handle GitHub MCP content array response format gracefully', async () => {
+    const mockMcpClientManager = {
+      listTools: jest.fn().mockResolvedValue({
+        tools: [
+          { name: 'create_pull_request', description: 'Create a pull request' }
+        ]
+      }),
+      callTool: jest.fn().mockResolvedValue({
+        // This is the actual response format causing the issue
+        content: [
+          {
+            type: 'text',
+            text: 'Pull request created successfully at https://github.com/test/repo/pull/456'
+          }
+        ]
+      })
+    };
+
+    const mockSessionService = { logDir: '/tmp/test' };
+    const service = new DocumentService(mockMcpClientManager, mockSessionService);
+    
+    const context = { repoOwner: 'test', repoName: 'repo', sessionId: 'test-session' };
+    const result = await service.createPullRequest(context, 'feature-branch', 'docs/test.md', 'Add test');
+    
+    // Should still return success (maintained working behavior)
+    expect(result.success).toBe(true);
+    
+    // UPDATED: Now extracts URL from content array (improvement made)
+    expect(result.pullRequestUrl).toBe('https://github.com/test/repo/pull/456');
+    expect(result.pullRequestNumber).toBe(456);
+  });
+
+  test('should maintain backward compatibility with existing PR response format', async () => {
+    const mockMcpClientManager = {
+      listTools: jest.fn().mockResolvedValue({
+        tools: [
+          { name: 'create_pull_request', description: 'Create a pull request' }
+        ]
+      }),
+      callTool: jest.fn().mockResolvedValue({
+        success: true,
+        pull_request: {
+          number: 123,
+          html_url: 'https://github.com/test/repo/pull/123'
+        }
+      })
+    };
+
+    const mockSessionService = { logDir: '/tmp/test' };
+    const service = new DocumentService(mockMcpClientManager, mockSessionService);
+    
+    const context = { repoOwner: 'test', repoName: 'repo', sessionId: 'test-session' };
+    const result = await service.createPullRequest(context, 'feature-branch', 'docs/test.md', 'Add test');
+    
+    // Should work perfectly with existing format
+    expect(result.success).toBe(true);
+    expect(result.pullRequestUrl).toBe('https://github.com/test/repo/pull/123');
+    expect(result.pullRequestNumber).toBe(123);
+  });
+
+  test('should return success even when GitHub MCP response is missing URL data', async () => {
+    const mockMcpClientManager = {
+      listTools: jest.fn().mockResolvedValue({
+        tools: [
+          { name: 'create_pull_request', description: 'Create a pull request' }
+        ]
+      }),
+      callTool: jest.fn().mockResolvedValue({
+        // Response with no URL data - should still succeed
+        success: true,
+        message: 'PR created but URL not provided'
+      })
+    };
+
+    const mockSessionService = { logDir: '/tmp/test' };
+    const service = new DocumentService(mockMcpClientManager, mockSessionService);
+    
+    const context = { repoOwner: 'test', repoName: 'repo', sessionId: 'test-session' };
+    const result = await service.createPullRequest(context, 'feature-branch', 'docs/test.md', 'Add test');
+    
+    // Key requirement: should still return success (don't break working behavior)
+    expect(result.success).toBe(true);
+    expect(result.pullRequestUrl).toBeUndefined();
+    expect(result.pullRequestNumber).toBeUndefined();
+  });
+
+  test('should extract PR URL from GitHub MCP content array response', async () => {
+    const mockMcpClientManager = {
+      listTools: jest.fn().mockResolvedValue({
+        tools: [
+          { name: 'create_pull_request', description: 'Create a pull request' }
+        ]
+      }),
+      callTool: jest.fn().mockResolvedValue({
+        // This represents the enhanced parsing we want to support
+        content: [
+          {
+            type: 'text',
+            text: 'Pull request created successfully at https://github.com/test/repo/pull/789'
+          }
+        ]
+      })
+    };
+
+    const mockSessionService = { logDir: '/tmp/test' };
+    const service = new DocumentService(mockMcpClientManager, mockSessionService);
+    
+    const context = { repoOwner: 'test', repoName: 'repo', sessionId: 'test-session' };
+    const result = await service.createPullRequest(context, 'feature-branch', 'docs/test.md', 'Add test');
+    
+    // Should still succeed
+    expect(result.success).toBe(true);
+    
+    // NEW: Should extract URL from content text
+    expect(result.pullRequestUrl).toBe('https://github.com/test/repo/pull/789');
+    expect(result.pullRequestNumber).toBe(789);
+  });
 });

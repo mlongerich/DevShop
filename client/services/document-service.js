@@ -449,8 +449,23 @@ ${commitMessage}
         
         if (prResult.success !== false) {
           // Success - handle nested GitHub MCP response structure
-          const pullRequestUrl = prResult.pull_request?.html_url || prResult.html_url;
-          const pullRequestNumber = prResult.pull_request?.number || prResult.number;
+          let pullRequestUrl = prResult.pull_request?.html_url || prResult.html_url;
+          let pullRequestNumber = prResult.pull_request?.number || prResult.number;
+          
+          // Enhanced: Try to extract URL from content array if not found in standard locations
+          if (!pullRequestUrl && prResult.content && Array.isArray(prResult.content)) {
+            for (const contentItem of prResult.content) {
+              if (contentItem.type === 'text' && contentItem.text) {
+                // Look for GitHub PR URL pattern in the text
+                const urlMatch = contentItem.text.match(/https:\/\/github\.com\/[^\/]+\/[^\/]+\/pull\/(\d+)/);
+                if (urlMatch) {
+                  pullRequestUrl = urlMatch[0];
+                  pullRequestNumber = parseInt(urlMatch[1], 10);
+                  break;
+                }
+              }
+            }
+          }
           
           if (!pullRequestUrl) {
             console.log(chalk.yellow('⚠️ GitHub MCP response missing pull request URL'), { prResult });
