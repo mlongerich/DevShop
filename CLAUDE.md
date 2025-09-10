@@ -333,6 +333,7 @@ npm run ba -- --repo=your-org/repo --verbose "test request"
 23. `scripts/start-fastmcp-server.sh` - **Secure container startup** - Docker secrets and validation
 24. `test-container-security.js` - **Security test suite** - Container security validation
 25. `CONTAINER_SECURITY_GUIDE.md` - **Security documentation** - Complete containerization guide
+26. `client/services/__tests__/document-service-github-integration.test.js` - **GitHub MCP Integration Tests** - Comprehensive test suite (11 tests) validating GitHub MCP tool usage, error handling, and smart branch detection
 
 ## Design Patterns Applied
 
@@ -451,7 +452,18 @@ npm run ba -- --repo=your-org/repo --verbose "test request"
 
 ## Recent Improvements
 
-### v1.1.4 - Component Architecture & God Object Elimination (LATEST)
+### v1.1.4 - GitHub MCP Integration & Smart Branch Detection (LATEST)
+
+- **GitHub MCP Tool Integration**: Implemented direct GitHub MCP tool usage (`create_branch`, `create_or_update_file`, `create_pull_request`) replacing generic reference tools
+- **Smart Branch Detection**: Added intelligent main/master branch fallback logic for repositories using different default branches
+- **Test-Driven GitHub Integration**: Created comprehensive test suite (11 tests) covering GitHub MCP parameter schemas and error handling
+- **Enhanced Error Handling**: Implemented GitHub MCP response structure parsing with nested object support (`prResult.pull_request.html_url`)
+- **Repository Compatibility**: Added automatic detection and fallback for 422 validation errors when base branch doesn't exist
+- **Code Refactoring**: Extracted shared `tryBaseBranches()` helper method to eliminate code duplication across branch and PR operations
+- **Legacy Fallback Updates**: Updated all fallback code paths to use smart branch detection instead of hardcoded 'main' branch references
+- **Living Documentation Reliability**: Ensured ADR/BDR generation works across different repository configurations (main vs master default branches)
+
+### v1.1.4 - Component Architecture & God Object Elimination (Previous)
 
 - **God Object Refactoring**: Successfully extracted InteractiveCLI (1,097 lines) into focused components using TDD methodology
 - **Component Architecture**: Created BudgetTracker, UIManager, SessionManager, AgentSwitcher components with single responsibilities

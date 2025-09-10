@@ -1,15 +1,16 @@
 import chalk from 'chalk';
 import path from 'path';
+import { BaseAgent } from '../agents/base-agent.js';
 
 /**
  * Document Service
  * Manages Business Decision Records (BDR) and Architectural Decision Records (ADR)
  * Handles generation, storage in target repositories, and RAG for existing decisions
  */
-export class DocumentService {
-  constructor(mcpClientManager, sessionService) {
-    this.mcpClientManager = mcpClientManager;
-    this.sessionService = sessionService;
+export class DocumentService extends BaseAgent {
+  constructor(mcpClientManager, sessionService, config = null) {
+    super(mcpClientManager, sessionService, config);
+    this.config = config;
   }
 
   /**
@@ -122,45 +123,34 @@ export class DocumentService {
    */
   async storeDocumentInRepository(context, filePath, content, commitMessage) {
     try {
-      // Find appropriate GitHub tools for file creation
-      const fileTools = await this.findFileCreationTools();
+      console.log(chalk.blue('🔄 Creating Pull Request for document...'));
       
-      if (!fileTools) {
-        console.log(chalk.yellow('⚠️ No file creation tools found, returning content only'));
-        return {
-          success: false,
-          error: 'No GitHub file creation tools available',
-          content: content
-        };
-      }
-
-      console.log(chalk.gray(`Using tool: ${fileTools.name} to create ${filePath}`));
-
-      // Prepare arguments for file creation
-      const args = {
-        owner: context.repoOwner,
-        repo: context.repoName,
-        path: filePath,
-        message: commitMessage,
-        content: Buffer.from(content).toString('base64'), // GitHub API expects base64
-        branch: 'main' // Default branch
-      };
-
-      // Add token if available
-      if (this.config?.github?.token) {
-        args.token = this.config.github.token;
-      }
-
-      const result = await this.mcpClientManager.callTool('github', fileTools.name, args);
-      
-      console.log(chalk.green(`✅ Document stored in repository: ${filePath}`));
-      
-      return {
-        success: true,
+      // Create a feature branch for the document
+      const branchName = this.generateBranchName(filePath);
+      const prResult = await this.createDocumentPullRequest(
+        context,
+        branchName,
         filePath,
-        commitMessage,
-        result
-      };
+        content,
+        commitMessage
+      );
+
+      if (prResult.success) {
+        console.log(chalk.green(`✅ Document PR created: ${prResult.pullRequestUrl}`));
+        return {
+          success: true,
+          filePath,
+          commitMessage,
+          branchName,
+          pullRequestUrl: prResult.pullRequestUrl,
+          pullRequestNumber: prResult.pullRequestNumber,
+          method: 'pull-request'
+        };
+      } else {
+        // Fallback to direct commit if PR creation fails
+        console.log(chalk.yellow('⚠️ PR creation failed, falling back to direct commit...'));
+        return await this.createDirectCommit(context, filePath, content, commitMessage);
+      }
 
     } catch (error) {
       console.log(chalk.yellow(`⚠️ Could not store document in repository: ${error.message}`));
@@ -171,6 +161,432 @@ export class DocumentService {
         content
       };
     }
+  }
+
+  /**
+   * Create a Pull Request for document storage
+   * @param {Object} context - Repository context
+   * @param {string} branchName - Feature branch name
+   * @param {string} filePath - File path in repository
+   * @param {string} content - File content
+   * @param {string} commitMessage - Commit message
+   * @returns {Promise<Object>} PR creation result
+   */
+  async createDocumentPullRequest(context, branchName, filePath, content, commitMessage) {
+    try {
+      const tools = await this.discoverTools('github');
+      
+      // Step 1: Create a new branch
+      const branchResult = await this.createBranch(context, branchName);
+      if (!branchResult.success) {
+        throw new Error(`Failed to create branch: ${branchResult.error}`);
+      }
+
+      // Step 2: Create file in the branch
+      const fileResult = await this.createFileInBranch(
+        context, branchName, filePath, content, commitMessage
+      );
+      if (!fileResult.success) {
+        throw new Error(`Failed to create file: ${fileResult.error}`);
+      }
+
+      // Step 3: Create Pull Request
+      const prResult = await this.createPullRequest(
+        context, branchName, filePath, commitMessage
+      );
+      
+      return prResult;
+
+    } catch (error) {
+      console.log(chalk.yellow(`PR creation error: ${error.message}`));
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Find tools for branch operations (get/create refs)
+   */
+  async findBranchTools() {
+    try {
+      const getRefTool = await this.findBestToolForCapability('github', ['get_reference', 'get']);
+      const createRefTool = await this.findBestToolForCapability('github', ['create_reference', 'create']);
+      
+      return { getRefTool, createRefTool };
+    } catch (error) {
+      return { getRefTool: null, createRefTool: null };
+    }
+  }
+
+  /**
+   * Find tools for pull request operations
+   */
+  async findPullRequestTools() {
+    return await this.findBestToolForCapability('github', ['pull_request', 'pull', 'create']);
+  }
+
+  /**
+   * Extract SHA from GitHub API response
+   */
+  extractShaFromResponse(response, context) {
+    // Handle null/undefined response
+    if (!response) {
+      throw new Error(`${context}: Response is null or undefined`);
+    }
+    
+    // Try object.sha first (standard format)
+    if (response.object?.sha) {
+      return response.object.sha;
+    }
+    
+    // Try direct sha property
+    if (response.sha) {
+      return response.sha;
+    }
+    
+    // If no SHA found, provide detailed error with response structure
+    const responseStructure = JSON.stringify(response, null, 2).substring(0, 500);
+    throw new Error(
+      `${context}: Could not extract SHA from response. ` +
+      `Expected 'object.sha', 'sha', 'target.sha', or 'data.sha' property. ` +
+      `Response structure: ${responseStructure}${responseStructure.length >= 500 ? '...' : ''}`
+    );
+  }
+
+  /**
+   * Create a new branch from main
+   * @param {Object} context - Repository context
+   * @param {string} branchName - New branch name
+   * @returns {Promise<Object>} Branch creation result
+   */
+  async createBranch(context, branchName) {
+    try {
+      // Try to find GitHub MCP create_branch tool first
+      const allTools = await this.discoverTools('github');
+      const createBranchTool = allTools.find(tool => tool.name === 'create_branch');
+      
+      if (createBranchTool) {
+        // Use helper method to try main/master branches with smart fallback
+        const attemptBranchCreation = async (baseBranch) => {
+          const branchArgs = {
+            owner: context.repoOwner,
+            repo: context.repoName,
+            branch: branchName,
+            from_branch: baseBranch
+          };
+          return await this.mcpClientManager.callTool('github', 'create_branch', branchArgs);
+        };
+
+        const errorChecks = {
+          shouldFallback: (errorMessage) => 
+            errorMessage.includes('404 Not Found') && errorMessage.includes('heads/main')
+        };
+
+        const result = await this.tryBaseBranches('branch creation', attemptBranchCreation, errorChecks);
+        
+        if (result.success !== false) {
+          return { success: true, branchName };
+        }
+        
+        return result; // Return error result
+      }
+
+      // Fallback to old approach if create_branch tool not available
+      const { getRefTool, createRefTool } = await this.findBranchTools();
+
+      if (!getRefTool || !createRefTool) {
+        throw new Error('No branch creation tools available');
+      }
+
+      // Use smart branch detection for fallback approach too
+      const fallbackOperation = async (baseBranch) => {
+        // Get base branch SHA first
+        const refArgs = {
+          owner: context.repoOwner,
+          repo: context.repoName,
+          ref: `heads/${baseBranch}`
+        };
+
+        const baseRef = await this.mcpClientManager.callTool('github', getRefTool.name, refArgs);
+        const baseSha = this.extractShaFromResponse(baseRef, `Get ${baseBranch} branch reference for ${context.repoOwner}/${context.repoName}`);
+
+        // Create new branch
+        const createArgs = {
+          owner: context.repoOwner,
+          repo: context.repoName,
+          ref: `refs/heads/${branchName}`,
+          sha: baseSha
+        };
+
+        await this.mcpClientManager.callTool('github', createRefTool.name, createArgs);
+        
+        return { success: true, branchName, sha: baseSha };
+      };
+
+      const errorChecks = {
+        shouldFallback: (errorMessage) => {
+          return errorMessage.includes('not found') || errorMessage.includes('does not exist') || errorMessage.includes('404');
+        }
+      };
+
+      return await this.tryBaseBranches('fallback branch creation', fallbackOperation, errorChecks);
+
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Create file in specific branch
+   * @param {Object} context - Repository context
+   * @param {string} branchName - Branch name
+   * @param {string} filePath - File path
+   * @param {string} content - File content
+   * @param {string} commitMessage - Commit message
+   * @returns {Promise<Object>} File creation result
+   */
+  async createFileInBranch(context, branchName, filePath, content, commitMessage) {
+    try {
+      // Try to find GitHub MCP create_or_update_file tool first
+      const allTools = await this.discoverTools('github');
+      const createFileTool = allTools.find(tool => tool.name === 'create_or_update_file');
+      
+      if (createFileTool) {
+        // Use GitHub MCP create_or_update_file tool directly
+        const fileArgs = {
+          owner: context.repoOwner,
+          repo: context.repoName,
+          path: filePath,
+          content: content, // GitHub MCP expects plain text, not base64
+          message: commitMessage || `Add ADR: ${filePath}`,
+          branch: branchName
+        };
+
+        const result = await this.mcpClientManager.callTool('github', 'create_or_update_file', fileArgs);
+        
+        // Check for GitHub MCP error response
+        if (result.isError) {
+          const errorMessage = this.extractErrorMessage(result);
+          console.error(chalk.red(`❌ GitHub MCP file creation failed: ${errorMessage}`));
+          return { success: false, error: errorMessage };
+        }
+        
+        return { success: true, result };
+      }
+
+      // Fallback to old approach if create_or_update_file tool not available
+      const fileTools = await this.findFileCreationTools();
+      
+      if (!fileTools) {
+        throw new Error('No file creation tools available');
+      }
+
+      const args = {
+        owner: context.repoOwner,
+        repo: context.repoName,
+        path: filePath,
+        message: commitMessage,
+        content: Buffer.from(content).toString('base64'),
+        branch: branchName // Create in feature branch
+      };
+
+      const result = await this.mcpClientManager.callTool('github', fileTools.name, args);
+      
+      return { success: true, result };
+
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Create Pull Request for the branch
+   * @param {Object} context - Repository context  
+   * @param {string} branchName - Feature branch name
+   * @param {string} filePath - File path for PR description
+   * @param {string} commitMessage - Original commit message
+   * @returns {Promise<Object>} PR creation result
+   */
+  async createPullRequest(context, branchName, filePath, commitMessage) {
+    try {
+      // Try to find GitHub MCP create_pull_request tool first
+      const allTools = await this.discoverTools('github');
+      const createPrTool = allTools.find(tool => tool.name === 'create_pull_request');
+      
+      if (createPrTool) {
+        const docType = filePath.includes('/adr/') || filePath.includes('adr-') ? 'ADR' : 'BDR';
+        const title = `docs: ${commitMessage}`;
+        const body = `## ${docType} Documentation
+
+${commitMessage}
+
+### File Added
+- \`${filePath}\`
+
+### Review Notes
+- This ${docType} document captures important decisions made during development
+- Please review the content for accuracy and completeness
+- Merge when approved to include in project documentation
+
+---
+*Generated by DevShop AI Assistant*`;
+
+        // Use helper method to try main/master base branches with smart fallback
+        const attemptPRCreation = async (baseBranch) => {
+          const prArgs = {
+            owner: context.repoOwner,
+            repo: context.repoName,
+            title,
+            head: branchName,
+            base: baseBranch,
+            body
+          };
+          return await this.mcpClientManager.callTool('github', 'create_pull_request', prArgs);
+        };
+
+        const errorChecks = {
+          shouldFallback: (errorMessage) => 
+            errorMessage.includes('422 Validation Failed') && errorMessage.includes('Field:base Code:invalid')
+        };
+
+        const prResult = await this.tryBaseBranches('pull request creation', attemptPRCreation, errorChecks);
+        
+        if (prResult.success !== false) {
+          // Success - handle nested GitHub MCP response structure
+          const pullRequestUrl = prResult.pull_request?.html_url || prResult.html_url;
+          const pullRequestNumber = prResult.pull_request?.number || prResult.number;
+          
+          if (!pullRequestUrl) {
+            console.log(chalk.yellow('⚠️ GitHub MCP response missing pull request URL'), { prResult });
+          }
+          
+          return {
+            success: true,
+            pullRequestUrl,
+            pullRequestNumber
+          };
+        }
+        
+        return prResult; // Return error result
+      }
+
+      // Fallback to old approach if create_pull_request tool not available
+      const prTool = await this.findPullRequestTools();
+
+      if (!prTool) {
+        throw new Error('No PR creation tools available');
+      }
+
+      const docType = filePath.includes('/adr/') ? 'ADR' : 'BDR';
+      const title = `docs: ${commitMessage}`;
+      const body = `## ${docType} Documentation
+
+${commitMessage}
+
+### File Added
+- \`${filePath}\`
+
+### Review Notes
+- This ${docType} document captures important decisions made during development
+- Please review the content for accuracy and completeness
+- Merge when approved to include in project documentation
+
+---
+*Generated by DevShop AI Assistant*`;
+
+      // Use smart branch detection for fallback PR creation too
+      const fallbackPROperation = async (baseBranch) => {
+        const prArgs = {
+          owner: context.repoOwner,
+          repo: context.repoName,
+          title,
+          head: branchName,
+          base: baseBranch,
+          body
+        };
+
+        const prResult = await this.mcpClientManager.callTool('github', prTool.name, prArgs);
+        
+        return {
+          success: true,
+          pullRequestUrl: prResult.html_url,
+          pullRequestNumber: prResult.number
+        };
+      };
+
+      const errorChecks = {
+        shouldFallback: (errorMessage) => {
+          return errorMessage.includes('422') && errorMessage.includes('invalid');
+        }
+      };
+
+      return await this.tryBaseBranches('fallback PR creation', fallbackPROperation, errorChecks);
+
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Fallback: Create direct commit to main branch
+   * @param {Object} context - Repository context
+   * @param {string} filePath - File path
+   * @param {string} content - File content  
+   * @param {string} commitMessage - Commit message
+   * @returns {Promise<Object>} Direct commit result
+   */
+  async createDirectCommit(context, filePath, content, commitMessage) {
+    try {
+      const fileTools = await this.findFileCreationTools();
+      
+      if (!fileTools) {
+        return {
+          success: false,
+          error: 'No GitHub file creation tools available',
+          content: content
+        };
+      }
+
+      const args = {
+        owner: context.repoOwner,
+        repo: context.repoName,
+        path: filePath,
+        message: commitMessage,
+        content: Buffer.from(content).toString('base64'),
+        branch: 'main'
+      };
+
+      const result = await this.mcpClientManager.callTool('github', fileTools.name, args);
+      
+      console.log(chalk.green(`✅ Document committed directly to main: ${filePath}`));
+      
+      return {
+        success: true,
+        filePath,
+        commitMessage,
+        result,
+        method: 'direct-commit'
+      };
+
+    } catch (error) {
+      return { success: false, error: error.message, filePath, content };
+    }
+  }
+
+  /**
+   * Generate a branch name for document storage
+   * @param {string} filePath - File path
+   * @returns {string} Branch name
+   */
+  generateBranchName(filePath) {
+    const timestamp = Date.now();
+    const docType = filePath.includes('/adr/') ? 'adr' : 'bdr';
+    const sanitized = filePath
+      .replace(/[^a-zA-Z0-9]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase();
+    
+    return `docs/${docType}-${sanitized}-${timestamp}`;
   }
 
   /**
@@ -518,17 +934,7 @@ Technical Analysis Session: ${context.sessionId}
    * @returns {Promise<Object|null>} Best tool for file creation
    */
   async findFileCreationTools() {
-    try {
-      const tools = await this.mcpClientManager.listTools('github');
-      const fileCreationTools = tools.filter(tool => 
-        tool.name.toLowerCase().includes('create') && 
-        (tool.name.toLowerCase().includes('file') || tool.name.toLowerCase().includes('content'))
-      );
-
-      return fileCreationTools.length > 0 ? fileCreationTools[0] : null;
-    } catch (error) {
-      return null;
-    }
+    return await this.findBestToolForCapability('github', ['file', 'create', 'content']);
   }
 
   /**
@@ -537,7 +943,7 @@ Technical Analysis Session: ${context.sessionId}
    */
   async findContentListingTools() {
     try {
-      const tools = await this.mcpClientManager.listTools('github');
+      const tools = await this.discoverTools('github');
       const listingTools = tools.filter(tool => 
         tool.name.toLowerCase().includes('list') ||
         tool.name.toLowerCase().includes('contents') ||
@@ -586,7 +992,7 @@ Technical Analysis Session: ${context.sessionId}
    */
   async findContentRetrievalTools() {
     try {
-      const tools = await this.mcpClientManager.listTools('github');
+      const tools = await this.discoverTools('github');
       const contentTools = tools.filter(tool => 
         tool.name.toLowerCase().includes('get') &&
         (tool.name.toLowerCase().includes('content') || tool.name.toLowerCase().includes('file'))
@@ -651,5 +1057,91 @@ Technical Analysis Session: ${context.sessionId}
     });
     
     return score;
+  }
+
+  /**
+   * Try multiple base branches with smart fallback logic
+   * @param {string} operation - Operation name for logging ('branch creation' or 'pull request creation')
+   * @param {Function} attemptFn - Function that attempts the operation with a base branch
+   * @param {Object} errorChecks - Object with error detection functions
+   * @returns {Promise<Object>} Operation result
+   */
+  async tryBaseBranches(operation, attemptFn, errorChecks) {
+    const baseBranches = ['main', 'master'];
+    
+    for (const baseBranch of baseBranches) {
+      try {
+        const result = await attemptFn(baseBranch);
+        
+        // Check for GitHub MCP error response
+        if (result.isError) {
+          const errorMessage = this.extractErrorMessage(result);
+          
+          // Check if this is a fallback-eligible error for main branch
+          if (baseBranch === 'main' && errorChecks.shouldFallback(errorMessage)) {
+            console.log(chalk.yellow(`⚠️ Main branch issue for ${operation}, trying master branch...`));
+            continue; // Try next branch (master)
+          }
+          
+          // For other errors or if master also failed, return error
+          console.error(chalk.red(`❌ GitHub MCP ${operation} failed: ${errorMessage}`));
+          return { success: false, error: errorMessage };
+        }
+        
+        // Success - return result
+        return result;
+      } catch (error) {
+        // If it's the last branch or unexpected error, throw
+        if (baseBranch === 'master' || !errorChecks.shouldFallback(error.message || '')) {
+          throw error;
+        }
+        console.log(chalk.yellow(`⚠️ Main branch error for ${operation}, trying master branch...`));
+        continue;
+      }
+    }
+    
+    // If we get here, all branches failed
+    return { success: false, error: `Failed to complete ${operation} with any base branch` };
+  }
+
+  /**
+   * Extract error message from GitHub MCP error response
+   * @param {Object} errorResponse - Error response with content array and isError flag
+   * @returns {string} Extracted error message
+   */
+  extractErrorMessage(errorResponse) {
+    try {
+      if (errorResponse.content && Array.isArray(errorResponse.content)) {
+        // Extract messages from content array - handle multiple formats
+        const messages = errorResponse.content
+          .map(item => {
+            // Handle {type: "text", text: "..."} format  
+            if (item.type === 'text' && item.text) {
+              return item.text;
+            }
+            // Handle {message: "..."} format
+            if (item.message) {
+              return item.message;
+            }
+            // Handle {error: "..."} format
+            if (item.error) {
+              return item.error;
+            }
+            // Fallback to JSON string
+            return JSON.stringify(item);
+          })
+          .filter(msg => msg && msg !== '{}');
+        
+        if (messages.length > 0) {
+          return messages.join('; ');
+        }
+      }
+      
+      // Fallback to generic error message
+      return 'GitHub MCP operation failed';
+    } catch (error) {
+      console.error(chalk.red(`Error extracting error message:`, error));
+      return 'GitHub MCP operation failed (unable to parse error details)';
+    }
   }
 }
