@@ -108,9 +108,10 @@ export class InteractiveCLI {
    * Start interactive conversation session
    * @param {string} repo - Repository in format owner/repo
    * @param {string} existingSessionId - Optional session ID to resume
+   * @param {string} initialInput - Optional initial input to start conversation with custom text
    * @returns {Promise<void>}
    */
-  async start(repo, existingSessionId = null) {
+  async start(repo, existingSessionId = null, initialInput = null) {
     const [repoOwner, repoName] = repo.split('/');
     
     // Setup readline interface
@@ -127,8 +128,8 @@ export class InteractiveCLI {
         // Resume existing session
         await this.resumeSession(existingSessionId, repoOwner, repoName);
       } else {
-        // Start new session
-        await this.startNewSession(repoOwner, repoName);
+        // Start new session with optional initial input
+        await this.startNewSession(repoOwner, repoName, initialInput);
       }
 
       // Enter conversation loop
@@ -155,16 +156,16 @@ export class InteractiveCLI {
   /**
    * Start a new interactive session
    */
-  async startNewSession(repoOwner, repoName) {
+  async startNewSession(repoOwner, repoName, customInitialInput = null) {
     // Delegate to SessionManager while preserving exact same interface
     const result = await this.sessionManager.startNewSession(repoOwner, repoName, this.multiAgentMode);
     
     // Create enhanced context for agent initialization
     const context = {
       ...result.context,
-      initialInput: this.multiAgentMode ? 
+      initialInput: customInitialInput || (this.multiAgentMode ? 
         `Hi! I'm starting a multi-agent conversation with both Business Analyst and Tech Lead to discuss work on this repository.` :
-        `Hi! I'm starting an interactive conversation to discuss potential work on this repository.`,
+        `Hi! I'm starting an interactive conversation to discuss potential work on this repository.`),
       verbose: false
     };
 

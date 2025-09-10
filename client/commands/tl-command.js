@@ -13,7 +13,7 @@ export class TLCommand extends BaseCommand {
     super(configService, sessionService, mcpClientManager);
     this.agent = new TechLeadAgent(mcpClientManager, sessionService, configService.getConfig());
     this.communicationService = new AgentCommunicationService(this.logDir, sessionService);
-    this.documentService = new DocumentService(mcpClientManager, sessionService);
+    this.documentService = new DocumentService(mcpClientManager, sessionService, configService.getConfig());
   }
 
   /**
@@ -90,8 +90,8 @@ export class TLCommand extends BaseCommand {
       }
     );
 
-    // Generate ADR if requested
-    if (options.generateAdr) {
+    // Generate ADR if requested or in multi-agent mode
+    if (options.generateAdr || options.multiAgent) {
       const adrResult = await this.generateADR(context, result, options.description);
       result.adr = adrResult;
     }
@@ -270,8 +270,8 @@ export class TLCommand extends BaseCommand {
     } else if (responseResult.completed) {
       console.log(chalk.green('✅ Collaboration completed successfully'));
       
-      // Generate ADR if requested
-      if (options.generateAdr && responseResult.finalAnalysis) {
+      // Generate ADR if requested or in collaboration mode  
+      if ((options.generateAdr || options.collaborate) && responseResult.finalAnalysis) {
         const context = this.prepareRepositoryContext(options, options.session, {});
         const adrResult = await this.generateADR(context, responseResult.finalAnalysis, 'BA-TL Collaboration Results');
         responseResult.adr = adrResult;

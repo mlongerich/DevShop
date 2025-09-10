@@ -305,8 +305,8 @@ export class BACommand extends BaseCommand {
     );
 
     try {
-      // Start interactive session
-      await interactiveCLI.start(options.repo, existingSessionId);
+      // Start interactive session with optional initial input
+      await interactiveCLI.start(options.repo, existingSessionId, options.description);
 
       return {
         mode: isMultiAgent ? 'multi-agent-interactive' : 'interactive',

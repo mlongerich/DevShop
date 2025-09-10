@@ -1,6 +1,56 @@
 import { describe, test, beforeEach, expect, jest } from '@jest/globals';
 
 describe('InteractiveCLI Methods Tests', () => {
+  
+  describe('Initial Input Handling', () => {
+    test('should accept initial input parameter in start method', async () => {
+      // This test will fail until we implement the feature
+      const mockAgent = {
+        startConversation: jest.fn().mockResolvedValue({
+          response: 'Initial response',
+          cost: 0.01,
+          turnCount: 1
+        })
+      };
+      
+      const mockSessionManager = {
+        startNewSession: jest.fn().mockResolvedValue({
+          context: { repoOwner: 'test', repoName: 'repo' }
+        }),
+        updateSessionState: jest.fn()
+      };
+      
+      const mockUIManager = {
+        displayHeader: jest.fn()
+      };
+      
+      const InteractiveCLI = (await import('../interactive-cli.js')).InteractiveCLI;
+      const cli = new InteractiveCLI(mockAgent, null, null);
+      
+      // Override components for testing
+      cli.sessionManager = mockSessionManager;
+      cli.uiManager = mockUIManager;
+      cli.displayBAResponse = jest.fn();
+      cli.displaySessionInfo = jest.fn();
+      cli.conversationLoop = jest.fn();
+      
+      // Mock readline
+      cli.rl = { close: jest.fn() };
+      
+      const initialInput = "I want to add unit tests";
+      
+      // This should NOT throw an error when we pass initial input
+      await expect(cli.start('test/repo', null, initialInput)).resolves.not.toThrow();
+      
+      // The agent should receive context with the initial input
+      expect(mockAgent.startConversation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initialInput: expect.stringContaining(initialInput)
+        })
+      );
+    });
+  });
+
   let InteractiveCLI;
   let cli;
   let mockConversationalAgent;

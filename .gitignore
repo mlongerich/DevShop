@@ -81,3 +81,5 @@ Thumbs.db
 
 # Local configuration
 config/local.json
+.claude/settings.local.json
+.claude/tdd-guard/

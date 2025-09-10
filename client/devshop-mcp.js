@@ -212,6 +212,7 @@ async function main() {
         if (options.interactive) {
           commandOptions.interactive = true;
           commandOptions.multiAgent = options.multiAgent;
+          commandOptions.description = input; // Pass initial input to interactive mode
         } else if (options.conversation) {
           commandOptions.conversation = options.conversation;
         } else if (options.session) {

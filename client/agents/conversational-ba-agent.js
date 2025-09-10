@@ -1,6 +1,7 @@
 import { BAAgent } from './ba-agent.js';
 import { ConversationManager } from '../services/conversation-manager.js';
 import { AgentCommunicationService } from '../services/agent-communication-service.js';
+import { TLCommand } from '../commands/tl-command.js';
 import chalk from 'chalk';
 
 /**
@@ -16,6 +17,15 @@ export class ConversationalBAAgent extends BAAgent {
     this.multiAgentMode = options.multiAgent || false;
     this.techLeadAgent = options.techLeadAgent || null;
     this.interactiveMode = options.interactive || false;
+    
+    // Create TL command for ADR generation (if not provided)
+    if (this.multiAgentMode && !options.tlCommand && config) {
+      // Create a config service mock for TL command
+      const configService = { getConfig: () => config };
+      this.tlCommand = new TLCommand(configService, sessionService, mcpClientManager);
+    } else {
+      this.tlCommand = options.tlCommand || null;
+    }
     
     // Create communication service with interactive mode
     this.agentCommunicationService = new AgentCommunicationService(
@@ -195,11 +205,15 @@ export class ConversationalBAAgent extends BAAgent {
       
       if (duplicateCheck.duplicates.length > 0) {
         console.log(chalk.yellow('\n⚠️  Found similar existing issues:'));
-        for (const duplicate of duplicateCheck.duplicates) {
-          console.log(chalk.gray(`   • Issue #${duplicate.number}: ${duplicate.title}`));
+        for (const duplicateInfo of duplicateCheck.duplicates) {
+          const { proposed, existing } = duplicateInfo;
+          console.log(chalk.gray(`   • Proposed: "${proposed.title}"`));
+          console.log(chalk.gray(`     Similar to Issue #${existing.number}: "${existing.title}"`));
+          console.log(chalk.gray(`     Similarity: ${existing.similarity}% - ${existing.url}`));
+          console.log('');
         }
-        console.log(chalk.yellow('   Consider updating existing issues instead of creating new ones.'));
-        // For now, proceed with creation - user can manually close duplicates
+        console.log(chalk.yellow('   📝 Consider updating existing issues instead of creating new ones.'));
+        console.log(chalk.yellow('   🤔 Proceeding with creation - you can manually review and close duplicates if needed.'));
       }
 
       // Create issues immediately as requested
@@ -429,12 +443,145 @@ Please continue the conversation by responding to the user's latest input while 
   async checkForDuplicateIssues(proposedIssues) {
     console.log(chalk.gray('🔍 Checking for duplicate issues...'));
     
-    // This would use GitHub MCP tools to search for existing issues
-    // For now, return empty duplicates
-    return {
-      duplicates: [],
-      unique: proposedIssues
-    };
+    try {
+      // Get GitHub repository info from context
+      const context = this.context || {};
+      if (!context.repoOwner || !context.repoName) {
+        console.log(chalk.yellow('⚠️ No repository context available for duplicate checking'));
+        return { duplicates: [], unique: proposedIssues };
+      }
+
+      const duplicates = [];
+      const unique = [];
+
+      // Search for each proposed issue
+      for (const proposedIssue of proposedIssues) {
+        const isDuplicate = await this.searchForSimilarIssue(
+          context.repoOwner,
+          context.repoName,
+          proposedIssue.title,
+          proposedIssue.body
+        );
+
+        if (isDuplicate) {
+          duplicates.push({
+            proposed: proposedIssue,
+            existing: isDuplicate
+          });
+        } else {
+          unique.push(proposedIssue);
+        }
+      }
+
+      if (duplicates.length > 0) {
+        console.log(chalk.yellow(`⚠️ Found ${duplicates.length} potential duplicate(s)`));
+      } else {
+        console.log(chalk.green('✅ No duplicates found'));
+      }
+
+      return { duplicates, unique };
+
+    } catch (error) {
+      console.log(chalk.yellow(`⚠️ Could not check for duplicates: ${error.message}`));
+      // Fail gracefully - return all as unique if duplicate checking fails
+      return { duplicates: [], unique: proposedIssues };
+    }
+  }
+
+  /**
+   * Search for similar existing issues using GitHub API
+   * @param {string} owner - Repository owner
+   * @param {string} repo - Repository name  
+   * @param {string} title - Proposed issue title
+   * @param {string} body - Proposed issue body
+   * @returns {Promise<Object|null>} Existing issue if found, null otherwise
+   */
+  async searchForSimilarIssue(owner, repo, title, body) {
+    try {
+      // Get GitHub tools from MCP client
+      const tools = await this.mcpClientManager.listTools('github');
+      const searchTool = tools.find(tool => 
+        tool.name.includes('search') || 
+        tool.name.includes('issues') || 
+        tool.name.includes('list')
+      );
+
+      if (!searchTool) {
+        console.log(chalk.gray('No GitHub search tools available'));
+        return null;
+      }
+
+      // Extract key terms from title for search
+      const searchTerms = this.extractSearchTerms(title);
+      const query = `${searchTerms} repo:${owner}/${repo} type:issue state:open`;
+
+      // Search for existing issues
+      const searchArgs = {
+        owner,
+        repo, 
+        q: query,
+        sort: 'relevance',
+        order: 'desc',
+        per_page: 10
+      };
+
+      const searchResult = await this.mcpClientManager.callTool('github', searchTool.name, searchArgs);
+      
+      if (searchResult?.items?.length > 0) {
+        // Check for similarity using title comparison
+        for (const existingIssue of searchResult.items) {
+          const similarity = this.calculateTitleSimilarity(title, existingIssue.title);
+          
+          // Consider it a duplicate if similarity > 70%
+          if (similarity > 0.7) {
+            return {
+              number: existingIssue.number,
+              title: existingIssue.title,
+              url: existingIssue.html_url,
+              similarity: Math.round(similarity * 100)
+            };
+          }
+        }
+      }
+
+      return null;
+
+    } catch (error) {
+      console.log(chalk.gray(`Could not search for similar issues: ${error.message}`));
+      return null;
+    }
+  }
+
+  /**
+   * Extract key search terms from issue title
+   * @param {string} title - Issue title
+   * @returns {string} Search terms
+   */
+  extractSearchTerms(title) {
+    // Remove common words and extract key terms
+    const stopWords = ['a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'as'];
+    const words = title.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 2 && !stopWords.includes(word));
+    
+    return words.slice(0, 5).join(' '); // Use top 5 key terms
+  }
+
+  /**
+   * Calculate similarity between two titles using simple word overlap
+   * @param {string} title1 - First title
+   * @param {string} title2 - Second title  
+   * @returns {number} Similarity score between 0 and 1
+   */
+  calculateTitleSimilarity(title1, title2) {
+    const words1 = new Set(title1.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/));
+    const words2 = new Set(title2.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/));
+    
+    const intersection = new Set([...words1].filter(word => words2.has(word)));
+    const union = new Set([...words1, ...words2]);
+    
+    return intersection.size / union.size;
   }
 
   /**
@@ -564,26 +711,35 @@ Generate actionable GitHub issues that address the user's needs as discussed in 
       // Extract technical questions from BA response
       const technicalQuestions = this.extractTechnicalQuestions(baResponse, conversationContext);
       
-      // Create enhanced context for TL agent
-      const tlContext = {
-        sessionId: context.sessionId,
-        repoOwner: context.repoOwner,
-        repoName: context.repoName,
+      // Create options for TL command execution (standalone analysis, not session-based)
+      const tlOptions = {
+        repo: `${context.repoOwner}/${context.repoName}`,
         description: technicalQuestions,
-        businessRequirements: conversationContext ? 
-          conversationContext.history.filter(turn => turn.speaker === 'user')
-            .map(turn => turn.message).join('\n') : context.initialInput,
-        taskType: 'ba_consultation',
+        multiAgent: this.multiAgentMode, // This will trigger ADR generation
         focusArea: this.detectTechnicalFocus(technicalQuestions),
-        originalUserRequest: conversationContext ? 
-          conversationContext.history[0]?.message : context.initialInput
+        verbose: this.interactiveMode
+        // Note: No session option to trigger standalone analysis instead of collaboration
       };
 
-      // Enhance context with methods expected by TL agent
-      const enhancedTlContext = this.techLeadAgent.ensureContextMethods(tlContext);
-
-      // Get TL response
-      const tlResult = await this.techLeadAgent.execute(enhancedTlContext);
+      // Use TL command instead of direct agent call to ensure ADR generation
+      let tlResult;
+      if (this.tlCommand) {
+        tlResult = await this.tlCommand.execute(tlOptions);
+      } else if (this.techLeadAgent && this.techLeadAgent.ensureContextMethods) {
+        // Fallback to direct agent call
+        const tlContext = {
+          sessionId: context.sessionId,
+          repoOwner: context.repoOwner,
+          repoName: context.repoName,
+          description: technicalQuestions,
+          taskType: 'ba_consultation',
+          focusArea: this.detectTechnicalFocus(technicalQuestions)
+        };
+        const enhancedTlContext = this.techLeadAgent.ensureContextMethods(tlContext);
+        tlResult = await this.techLeadAgent.execute(enhancedTlContext);
+      } else {
+        throw new Error('Neither TL command nor TL agent available for consultation');
+      }
 
       // Send BA question to TL via communication service
       await this.agentCommunicationService.sendMessage(

@@ -119,11 +119,15 @@ export class BaseCommand {
       throw new Error('Repository must be in format owner/repo-name');
     }
 
+    // Log repository targeting for verification
+    console.log(`🎯 Repository context prepared: ${repoOwner}/${repoName} (session: ${sessionId})`);
+
     return {
       sessionId,
       repoOwner,
       repoName,
       verbose: options.verbose || false,
+      getRepository: () => `${repoOwner}/${repoName}`,
       ...additionalFields
     };
   }
