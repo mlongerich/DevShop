@@ -18,9 +18,12 @@
       "Bash(npm run ba:*)",
       "Bash(npm run test:*)",
       "Bash(npm run:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(echo $PWD)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "disableAllHooks": true
 }

@@ -504,4 +504,82 @@ export class AgentCommunicationService {
 
     return stats;
   }
+
+  /**
+   * Preserve original user context when passing requests between agents
+   * @param {string} sessionId - Session ID
+   * @param {string} originalUserRequest - Original user request
+   * @param {Object} baResponse - BA agent response
+   * @returns {Object} Preserved context for TL
+   */
+  preserveOriginalUserContext(sessionId, originalUserRequest, baResponse) {
+    // Detect if this is a simple technical request that should be simplified
+    const isSimpleRequest = this.isSimpleTechnicalRequest(originalUserRequest);
+    
+    if (isSimpleRequest) {
+      return {
+        originalUserRequest: originalUserRequest,
+        simplifiedForTL: this.simplifyForTL(originalUserRequest),
+        skipElaboration: true,
+        isSimplifiedFromBA: true,
+        sessionId: sessionId,
+        preservedAt: new Date().toISOString()
+      };
+    }
+    
+    // For complex requests, preserve full context
+    return {
+      originalUserRequest: originalUserRequest,
+      baElaboratedQuestions: baResponse.technical_questions,
+      requirementsAnalysis: baResponse.requirements_analysis,
+      skipElaboration: false,
+      isSimplifiedFromBA: false,
+      sessionId: sessionId,
+      preservedAt: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Check if user request is simple and technical
+   * @param {string} userRequest - User request text
+   * @returns {boolean} Whether request is simple technical
+   */
+  isSimpleTechnicalRequest(userRequest) {
+    const text = userRequest.toLowerCase().trim();
+    
+    const simplePatterns = [
+      /^(i want to|need to|can we|let'?s|please) add (unit )?tests?/,
+      /^add (unit )?tests?/,
+      /^set up testing/,
+      /^implement (unit )?testing/,
+      /^(what|which) (testing framework|test runner|tool)/,
+      /^should (we|i) use (jest|vitest|mocha|cypress)/
+    ];
+    
+    return simplePatterns.some(pattern => pattern.test(text)) && text.length < 100;
+  }
+
+  /**
+   * Simplify user request for TL consumption
+   * @param {string} userRequest - Original user request
+   * @returns {string} Simplified request
+   */
+  simplifyForTL(userRequest) {
+    const text = userRequest.toLowerCase().trim();
+    
+    if (text.includes('unit test') || text.includes('testing')) {
+      return 'Add unit tests to the static site';
+    }
+    
+    if (text.includes('framework') && text.includes('test')) {
+      return 'Choose testing framework';
+    }
+    
+    // Default: clean up the request
+    return userRequest
+      .replace(/^(i want to|need to|can we|let's|please)\s+/i, '')
+      .replace(/\?$/, '')
+      .trim()
+      .replace(/^([a-z])/, (match) => match.toUpperCase());
+  }
 }

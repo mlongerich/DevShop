@@ -660,19 +660,32 @@ Generate actionable GitHub issues that address the user's needs as discussed in 
       'tech stack', 'language', 'framework', 'technology',
       
       // Testing specific
-      'testing framework', 'test runner', 'jest', 'pytest', 'junit',
-      'coverage', 'mocking', 'test data', 'fixtures',
+      'testing framework', 'test runner', 'jest', 'pytest', 'junit', 'mocha', 'vitest',
+      'coverage', 'mocking', 'test data', 'fixtures', 'unit tests', 'integration tests',
       
       // Development workflow
       'ci/cd', 'github actions', 'pipeline', 'deployment',
       'build tool', 'package manager', 'dependencies',
       
+      // Database and data storage
+      'database', 'db', 'sql', 'nosql', 'mongodb', 'postgres', 'mysql', 'data storage',
+      'postgresql', 'sqlite', 'redis', 'elasticsearch',
+      
+      // API and services
+      'api', 'rest', 'graphql', 'endpoint', 'microservice', 'service',
+      
+      // Frontend and UI
+      'frontend', 'ui', 'user interface', 'react', 'vue', 'angular', 'component',
+      
+      // Authentication and security
+      'authentication', 'auth', 'login', 'oauth', 'jwt', 'session', 'security',
+      
       // Architecture questions
       'architecture', 'design patterns', 'best practices',
-      'performance', 'security', 'scalability',
+      'performance', 'scalability', 'optimization',
       
       // Specific tooling
-      'what.*use', 'which.*tool', 'how.*run', 'what.*setup'
+      'what.*use', 'which.*tool', 'how.*run', 'what.*setup', 'what.*recommend'
     ];
 
     const responseText = response.toLowerCase();
@@ -711,13 +724,20 @@ Generate actionable GitHub issues that address the user's needs as discussed in 
       // Extract technical questions from BA response
       const technicalQuestions = this.extractTechnicalQuestions(baResponse, conversationContext);
       
+      // CRITICAL FIX: Get original user request for context preservation
+      const originalUserRequest = conversationContext?.history.find(turn => turn.speaker === 'user')?.message;
+      const isSimpleRequest = originalUserRequest && this.isSimpleTechnicalRequest(originalUserRequest);
+      
       // Create options for TL command execution (standalone analysis, not session-based)
       const tlOptions = {
         repo: `${context.repoOwner}/${context.repoName}`,
         description: technicalQuestions,
         multiAgent: this.multiAgentMode, // This will trigger ADR generation
         focusArea: this.detectTechnicalFocus(technicalQuestions),
-        verbose: this.interactiveMode
+        verbose: this.interactiveMode,
+        // CRITICAL FIX: Pass original user context to TL
+        originalUserRequest: originalUserRequest,
+        isSimplifiedFromBA: isSimpleRequest
         // Note: No session option to trigger standalone analysis instead of collaboration
       };
 
@@ -731,9 +751,13 @@ Generate actionable GitHub issues that address the user's needs as discussed in 
           sessionId: context.sessionId,
           repoOwner: context.repoOwner,
           repoName: context.repoName,
+          businessRequirements: technicalQuestions, // TL expects this field
           description: technicalQuestions,
           taskType: 'ba_consultation',
-          focusArea: this.detectTechnicalFocus(technicalQuestions)
+          focusArea: this.detectTechnicalFocus(technicalQuestions),
+          // CRITICAL FIX: Pass original user context to TL
+          originalUserRequest: originalUserRequest,
+          isSimplifiedFromBA: isSimpleRequest
         };
         const enhancedTlContext = this.techLeadAgent.ensureContextMethods(tlContext);
         tlResult = await this.techLeadAgent.execute(enhancedTlContext);
@@ -785,23 +809,166 @@ Generate actionable GitHub issues that address the user's needs as discussed in 
    * @returns {string} Extracted technical questions
    */
   extractTechnicalQuestions(baResponse, conversationContext) {
-    // Split response into sentences and find technical questions
-    const sentences = baResponse.split(/[.!?]+/).filter(s => s.trim());
-    const technicalSentences = sentences.filter(sentence => 
-      sentence.includes('?') && this.needsTechnicalInput(sentence)
-    );
-
-    if (technicalSentences.length > 0) {
-      return technicalSentences.join(' ') + 
+    // CRITICAL FIX: Check if original user request is a simple technical request
+    let originalUserRequest = null;
+    if (conversationContext) {
+      originalUserRequest = conversationContext.history.find(turn => turn.speaker === 'user')?.message;
+    }
+    
+    // If we have the original user request and it's simple, pass it through directly
+    if (originalUserRequest && this.isSimpleTechnicalRequest(originalUserRequest)) {
+      const context = { repoName: conversationContext?.repository?.split('/')[1] || 'project' };
+      return this.simplifyForTechnicalLead(originalUserRequest, context);
+    }
+    
+    // For complex requests, use the existing technical question extraction
+    const technicalQuestions = this.extractCompleteTechnicalQuestions(baResponse);
+    
+    if (technicalQuestions.length > 0) {
+      return technicalQuestions.join(' ') + 
         (conversationContext ? `\n\nContext: User wants to ${conversationContext.history[0]?.message}` : '');
     }
 
-    // Fallback: ask TL to help with the general technical aspects
-    const userRequest = conversationContext ? 
-      conversationContext.history.find(turn => turn.speaker === 'user')?.message : 
-      'technical implementation';
+    // Fallback: Try to get user request from conversation context first
+    let userRequest = originalUserRequest;
+    
+    // If no conversation context or no user message found, try to extract topic from BA response
+    if (!userRequest) {
+      userRequest = this.extractTopicFromBAResponse(baResponse);
+    }
+    
+    // Final fallback to generic implementation
+    if (!userRequest) {
+      userRequest = 'technical implementation';
+    }
       
     return `Please provide technical guidance for: ${userRequest}. What are the recommended approaches, tools, and best practices?`;
+  }
+
+  /**
+   * Extract complete technical questions from BA response, handling complex questions with parentheses
+   * @param {string} baResponse - BA response content
+   * @returns {Array<string>} Array of complete technical questions
+   */
+  extractCompleteTechnicalQuestions(baResponse) {
+    // Split on sentence boundaries, but be smarter about parentheses and examples
+    const questionBoundaries = this.findQuestionBoundaries(baResponse);
+    const questions = [];
+    
+    for (let i = 0; i < questionBoundaries.length; i++) {
+      const start = i === 0 ? 0 : questionBoundaries[i - 1];
+      const end = questionBoundaries[i];
+      const question = baResponse.substring(start, end).trim();
+      
+      if (question && this.needsTechnicalInput(question)) {
+        questions.push(question);
+      }
+    }
+    
+    return questions;
+  }
+
+  /**
+   * Find question boundaries in text, accounting for examples in parentheses
+   * @param {string} text - Text to analyze
+   * @returns {Array<number>} Array of question end positions
+   */
+  findQuestionBoundaries(text) {
+    const boundaries = [];
+    let parenDepth = 0;
+    let inExample = false;
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChars = text.substring(i, i + 4);
+      
+      // Track parentheses depth
+      if (char === '(') {
+        parenDepth++;
+        // Check if this looks like an example: "(e.g." or similar
+        if (nextChars.match(/\(e\.g\.?/i)) {
+          inExample = true;
+        }
+      } else if (char === ')') {
+        parenDepth--;
+        if (parenDepth === 0) {
+          inExample = false;
+        }
+      }
+      
+      // Only split on question marks that are not inside examples
+      if (char === '?' && !inExample && parenDepth === 0) {
+        boundaries.push(i + 1);
+      }
+      
+      // Also split on period/exclamation if not in parentheses
+      if ((char === '.' || char === '!') && parenDepth === 0 && !inExample) {
+        // Make sure it's not part of "e.g." or similar abbreviations
+        const prevChars = text.substring(Math.max(0, i - 3), i + 1);
+        if (!prevChars.match(/e\.g\.$/i) && !prevChars.match(/i\.e\.$/i)) {
+          boundaries.push(i + 1);
+        }
+      }
+    }
+    
+    // Always include the end of the text
+    if (boundaries.length === 0 || boundaries[boundaries.length - 1] !== text.length) {
+      boundaries.push(text.length);
+    }
+    
+    return boundaries;
+  }
+
+  /**
+   * Extract technical topic from BA response when no conversation context
+   * @param {string} baResponse - BA response content
+   * @returns {string|null} Extracted topic or null if none found
+   */
+  extractTopicFromBAResponse(baResponse) {
+    const responseText = baResponse.toLowerCase();
+    
+    // Common technical topic patterns
+    const topicPatterns = [
+      // Testing patterns
+      { pattern: /\b(unit tests?|testing|jest|mocha|pytest|junit|test framework|coverage|test runner)\b/g, topic: 'unit tests' },
+      { pattern: /\b(integration tests?|end-to-end tests?|e2e tests?)\b/g, topic: 'integration testing' },
+      
+      // Authentication patterns  
+      { pattern: /\b(authentication|auth|login|oauth|jwt|session|security)\b/g, topic: 'authentication' },
+      
+      // Performance patterns
+      { pattern: /\b(performance|optimization|speed|slow|cache|caching|load time)\b/g, topic: 'performance optimization' },
+      
+      // Database patterns
+      { pattern: /\b(database|db|sql|nosql|mongodb|postgres|mysql|data storage)\b/g, topic: 'database' },
+      
+      // API patterns
+      { pattern: /\b(api|rest|graphql|endpoint|microservice|service)\b/g, topic: 'API development' },
+      
+      // Frontend patterns
+      { pattern: /\b(frontend|ui|user interface|react|vue|angular|component)\b/g, topic: 'frontend development' },
+      
+      // CI/CD patterns
+      { pattern: /\b(ci\/cd|deployment|pipeline|github actions|build|release)\b/g, topic: 'CI/CD pipeline' },
+      
+      // Architecture patterns
+      { pattern: /\b(architecture|design pattern|microservice|monolith|scalability)\b/g, topic: 'architecture' }
+    ];
+    
+    // Try to find a matching topic pattern
+    for (const { pattern, topic } of topicPatterns) {
+      if (pattern.test(responseText)) {
+        return topic;
+      }
+    }
+    
+    // If no specific pattern found, try to extract general technical terms
+    const technicalTerms = responseText.match(/\b(framework|library|tool|language|technology|stack|setup|configuration|implementation)\b/g);
+    if (technicalTerms && technicalTerms.length > 0) {
+      return 'technical implementation';
+    }
+    
+    return null;
   }
 
   /**
@@ -821,6 +988,85 @@ Generate actionable GitHub issues that address the user's needs as discussed in 
     if (text.includes('ui') || text.includes('frontend')) return 'frontend';
     
     return 'general';
+  }
+
+  /**
+   * Detect if user request is a simple technical request that should bypass BA elaboration
+   * @param {string} userRequest - Original user request
+   * @returns {boolean} Whether request is simple and technical
+   */
+  isSimpleTechnicalRequest(userRequest) {
+    const text = userRequest.toLowerCase().trim();
+    
+    // Simple technical request patterns
+    const simplePatterns = [
+      // Testing requests
+      /^(i want to|need to|can we|let'?s|please) add (unit )?tests?/,
+      /^add (unit )?tests?/,
+      /^set up testing/,
+      /^implement (unit )?testing/,
+      
+      // Framework/tool selection requests
+      /^(what|which) (testing framework|test runner|tool)/,
+      /^should (we|i) use (jest|vitest|mocha|cypress)/,
+      /^(jest or vitest|react or vue|postgres or mysql)/,
+      
+      // Simple setup requests
+      /^(add|set up|configure|install) (authentication|database|api)/,
+      /^implement (auth|login|signup)/,
+      /^deploy to (heroku|netlify|vercel)/,
+      
+      // Direct technical questions
+      /^how (do i|to) (test|deploy|setup)/,
+      /^what'?s the best way to (test|deploy|setup)/
+    ];
+    
+    // Check if it matches simple patterns
+    const matchesSimplePattern = simplePatterns.some(pattern => pattern.test(text));
+    
+    // Additional criteria: short length and no complex words
+    const isShort = text.length < 100;
+    const hasNoComplexWords = !text.includes('architecture') && 
+                              !text.includes('microservices') && 
+                              !text.includes('scalability') &&
+                              !text.includes('comprehensive') &&
+                              !text.includes('enterprise');
+    
+    return matchesSimplePattern && isShort && hasNoComplexWords;
+  }
+
+  /**
+   * Simplify user request for Tech Lead when it's a simple technical request
+   * @param {string} userRequest - Original user request
+   * @param {Object} context - Request context
+   * @returns {string} Simplified request for TL
+   */
+  simplifyForTechnicalLead(userRequest, context) {
+    const text = userRequest.toLowerCase().trim();
+    
+    // Convert colloquial language to technical language
+    if (text.includes('unit test') || text.includes('testing')) {
+      return `Add unit tests to the ${context.repoName} static site`;
+    }
+    
+    if (text.includes('framework') && text.includes('test')) {
+      return `Choose testing framework for ${context.repoName}`;
+    }
+    
+    if (text.includes('deploy')) {
+      return `Set up deployment for ${context.repoName}`;
+    }
+    
+    if (text.includes('auth')) {
+      return `Add authentication to ${context.repoName}`;
+    }
+    
+    // Default: clean up the request but keep it simple
+    return userRequest
+      .replace(/^(i want to|need to|can we|let's|please)\s+/i, '')
+      .replace(/\?$/, '')
+      .trim()
+      .replace(/^([a-z])/, (match) => match.toUpperCase()); // Capitalize first letter
   }
 
   /**

@@ -86,7 +86,7 @@ export class TechLeadAgent extends BaseAgent {
   }
 
   /**
-   * Generate comprehensive tech lead analysis
+   * Generate tech lead analysis with proportional response based on complexity
    * @param {Object} context - Enhanced context
    * @param {Object} repoAnalysis - Repository analysis results
    * @returns {Promise<Object>} Tech lead analysis
@@ -94,6 +94,136 @@ export class TechLeadAgent extends BaseAgent {
   async generateTechLeadAnalysis(context, repoAnalysis) {
     const systemPrompt = await this.getTechLeadSystemPrompt();
     
+    // Analyze question complexity and determine response scope
+    const questionAnalysis = this.analyzeQuestionComplexity(context);
+    
+    // Generate appropriate response based on complexity
+    if (questionAnalysis.isSimple) {
+      return this.generateDirectTechnicalAnswer(context, repoAnalysis, systemPrompt);
+    } else if (questionAnalysis.isComplex) {
+      return this.generateComprehensiveAnalysis(context, repoAnalysis, systemPrompt);
+    } else {
+      return this.generateMediumScopeAnalysis(context, repoAnalysis, systemPrompt);
+    }
+  }
+
+  /**
+   * Analyze the complexity and scope of the technical question
+   * @param {Object} context - Enhanced context
+   * @returns {Object} Question complexity analysis
+   */
+  analyzeQuestionComplexity(context) {
+    const businessRequirements = (context.businessRequirements || '').toLowerCase();
+    const featureDescription = (context.featureDescription || '').toLowerCase();
+    const combinedText = `${businessRequirements} ${featureDescription}`.toLowerCase();
+    
+    // CRITICAL FIX: If this request was simplified by BA from a simple user request, treat it as simple
+    if (context.isSimplifiedFromBA || context.originalUserRequest) {
+      return {
+        isSimple: true,
+        isComplex: false,
+        scope: 'simple',
+        source: 'simplified_by_ba'
+      };
+    }
+
+    // Simple question indicators (direct technical questions)
+    const simpleIndicators = [
+      // Question patterns
+      /what (testing framework|test runner|tool|library|language)/,
+      /which (framework|tool|approach|method|option)/,
+      /should (we|i) use/,
+      /prefer.*or/,
+      /recommend.*\?/,
+      /better.*vs/,
+      /jest.*vitest/,
+      /react.*vue/,
+      /postgres.*mysql/,
+      
+      // Testing-specific patterns (questions and statements)
+      /add (unit tests?|testing|test)/,
+      /set up (testing|tests?|test framework)/,
+      /implement (testing|unit tests?)/,
+      /choose.*test/,
+      /test.*framework/,
+      /testing.*setup/,
+      /(jest|vitest|mocha|cypress|playwright)/,
+      
+      // Simple technical tasks
+      /add.*authentication/,
+      /set up.*database/,
+      /configure.*deployment/,
+      /implement.*api/
+    ];
+
+    // Complex question indicators (architectural decisions)
+    const complexIndicators = [
+      /architecture/,
+      /redesign/,
+      /microservices/,
+      /scale.*million/,
+      /enterprise/,
+      /migration/,
+      /complete.*overhaul/,
+      /system.*design/,
+      /infrastructure/
+    ];
+
+    // Count indicators
+    const simpleCount = simpleIndicators.filter(pattern => pattern.test(combinedText)).length;
+    const complexCount = complexIndicators.filter(pattern => pattern.test(combinedText)).length;
+
+    // Determine complexity
+    const isSimple = simpleCount > 0 && complexCount === 0 && combinedText.length < 200;
+    const isComplex = complexCount > 0 || combinedText.length > 500 || combinedText.includes('phase') || combinedText.includes('strategy');
+    
+    return {
+      isSimple,
+      isComplex,
+      isMedium: !isSimple && !isComplex,
+      simpleCount,
+      complexCount,
+      textLength: combinedText.length,
+      scope: isSimple ? 'simple' : isComplex ? 'complex' : 'medium'
+    };
+  }
+
+  /**
+   * Generate direct technical answer for simple questions
+   * @param {Object} context - Enhanced context
+   * @param {Object} repoAnalysis - Repository analysis results
+   * @param {string} systemPrompt - System prompt
+   * @returns {Promise<Object>} Direct technical response
+   */
+  async generateDirectTechnicalAnswer(context, repoAnalysis, systemPrompt) {
+    const businessRequirements = context.businessRequirements || '';
+    
+    let analysisRequest = `You are a Tech Lead answering a specific technical question. Provide a direct, concise answer.\n\n`;
+    analysisRequest += `Repository: ${context.getRepository()}\n`;
+    analysisRequest += `Repository Type: ${this.inferRepositoryType(repoAnalysis.structure)}\n`;
+    analysisRequest += `Question: ${businessRequirements}\n\n`;
+    analysisRequest += `Provide a focused technical recommendation addressing only the specific question asked.\n`;
+    analysisRequest += `Format as JSON with only relevant sections: technology_recommendations (required), implementation_plan (simple steps only).\n`;
+    analysisRequest += `Do not include comprehensive architecture analysis unless specifically requested.`;
+
+    const response = await this.generateLLMResponse(
+      'tech-lead',
+      systemPrompt,
+      analysisRequest,
+      context
+    );
+
+    return this.parseTechLeadResponse(response.content);
+  }
+
+  /**
+   * Generate comprehensive analysis for complex architectural questions
+   * @param {Object} context - Enhanced context
+   * @param {Object} repoAnalysis - Repository analysis results
+   * @param {string} systemPrompt - System prompt
+   * @returns {Promise<Object>} Comprehensive analysis
+   */
+  async generateComprehensiveAnalysis(context, repoAnalysis, systemPrompt) {
     // Build analysis request based on context
     let analysisRequest = `Please analyze the following repository from a technical perspective:\n\n`;
     analysisRequest += `Repository: ${context.getRepository()}\n`;
@@ -138,6 +268,64 @@ export class TechLeadAgent extends BaseAgent {
 
     // Parse the structured response
     return this.parseTechLeadResponse(response.content);
+  }
+
+  /**
+   * Generate medium scope analysis for moderately complex questions
+   * @param {Object} context - Enhanced context
+   * @param {Object} repoAnalysis - Repository analysis results
+   * @param {string} systemPrompt - System prompt
+   * @returns {Promise<Object>} Medium scope analysis
+   */
+  async generateMediumScopeAnalysis(context, repoAnalysis, systemPrompt) {
+    let analysisRequest = `Provide a focused technical analysis for this request:\n\n`;
+    analysisRequest += `Repository: ${context.getRepository()}\n`;
+    analysisRequest += `Repository Structure:\n${repoAnalysis.structure}\n\n`;
+    
+    if (context.businessRequirements) {
+      analysisRequest += `Requirements: ${context.businessRequirements}\n\n`;
+    }
+
+    analysisRequest += `Focus on the most relevant aspects:\n`;
+    analysisRequest += `1. Technology Recommendations\n`;
+    analysisRequest += `2. Implementation Plan (2-3 phases max)\n`;
+    analysisRequest += `3. Key Technical Risks\n\n`;
+    analysisRequest += `Keep the response focused and proportional to the request scope.\n`;
+    analysisRequest += `Format as structured JSON.`;
+
+    const response = await this.generateLLMResponse(
+      'tech-lead',
+      systemPrompt,
+      analysisRequest,
+      context
+    );
+
+    return this.parseTechLeadResponse(response.content);
+  }
+
+  /**
+   * Infer repository type from structure analysis
+   * @param {string} structure - Repository structure
+   * @returns {string} Repository type
+   */
+  inferRepositoryType(structure) {
+    const lowerStructure = structure.toLowerCase();
+    
+    if (lowerStructure.includes('package.json') && lowerStructure.includes('src/')) {
+      return 'JavaScript/Node.js project';
+    } else if (lowerStructure.includes('index.html') && lowerStructure.includes('css/')) {
+      return 'Static website';
+    } else if (lowerStructure.includes('_config.yml') || lowerStructure.includes('_site/')) {
+      return 'Jekyll static site';
+    } else if (lowerStructure.includes('requirements.txt') || lowerStructure.includes('setup.py')) {
+      return 'Python project';
+    } else if (lowerStructure.includes('pom.xml') || lowerStructure.includes('build.gradle')) {
+      return 'Java project';
+    } else if (lowerStructure.includes('cargo.toml')) {
+      return 'Rust project';
+    } else {
+      return 'Generic project';
+    }
   }
 
   /**

@@ -11,6 +11,8 @@ export class DocumentService extends BaseAgent {
   constructor(mcpClientManager, sessionService, config = null) {
     super(mcpClientManager, sessionService, config);
     this.config = config;
+    // Initialize ADR counter for sequential numbering
+    this.adrCounter = 0;
   }
 
   /**
@@ -76,8 +78,8 @@ export class DocumentService extends BaseAgent {
     try {
       const adrContent = this.formatADR(decisionTitle, technicalAnalysis, context);
       
-      const fileName = this.sanitizeFileName(`ADR-${Date.now()}-${decisionTitle}`);
-      const filePath = `documents/adr/${fileName}.md`;
+      const fileName = this.generateReadableADRName(decisionTitle);
+      const filePath = `documents/adr/${fileName}`;
 
       // Store in target repository
       const result = await this.storeDocumentInRepository(
@@ -104,6 +106,8 @@ export class DocumentService extends BaseAgent {
         type: 'ADR',
         title: decisionTitle,
         createdAt: new Date().toISOString(),
+        commitSha: result.commitSha,
+        pullRequestUrl: result.pullRequestUrl,
         error: result.error
       };
 
@@ -144,6 +148,7 @@ export class DocumentService extends BaseAgent {
           branchName,
           pullRequestUrl: prResult.pullRequestUrl,
           pullRequestNumber: prResult.pullRequestNumber,
+          commitSha: prResult.commitSha,
           method: 'pull-request'
         };
       } else {
@@ -176,8 +181,8 @@ export class DocumentService extends BaseAgent {
     try {
       const tools = await this.discoverTools('github');
       
-      // Step 1: Create a new branch
-      const branchResult = await this.createBranch(context, branchName);
+      // Step 1: Create a new branch with collision detection
+      const branchResult = await this.createBranchWithCollisionDetection(context, branchName);
       if (!branchResult.success) {
         throw new Error(`Failed to create branch: ${branchResult.error}`);
       }
@@ -195,7 +200,11 @@ export class DocumentService extends BaseAgent {
         context, branchName, filePath, commitMessage
       );
       
-      return prResult;
+      // Include commit SHA from file creation in the final result
+      return {
+        ...prResult,
+        commitSha: fileResult.commitSha
+      };
 
     } catch (error) {
       console.log(chalk.yellow(`PR creation error: ${error.message}`));
@@ -336,6 +345,67 @@ export class DocumentService extends BaseAgent {
   }
 
   /**
+   * Create branch with collision detection and automatic incremental naming
+   * @param {Object} context - Repository context
+   * @param {string} baseBranchName - Base branch name to try
+   * @returns {Promise<Object>} Branch creation result with final branch name
+   */
+  async createBranchWithCollisionDetection(context, baseBranchName) {
+    let attemptNumber = 0;
+    let currentBranchName = baseBranchName;
+    const maxAttempts = 10; // Prevent infinite loops
+
+    while (attemptNumber < maxAttempts) {
+      try {
+        const result = await this.createBranch(context, currentBranchName);
+        
+        if (result.success) {
+          return {
+            success: true,
+            branchName: currentBranchName,
+            attempts: attemptNumber + 1
+          };
+        }
+
+        // Check if this is a branch collision (422 Reference already exists)
+        if (result.error && result.error.includes('422 Reference already exists')) {
+          attemptNumber++;
+          currentBranchName = `${baseBranchName}-${attemptNumber}`;
+          console.log(chalk.yellow(`⚠️ Branch '${baseBranchName}${attemptNumber === 1 ? '' : `-${attemptNumber - 1}`}' exists, trying '${currentBranchName}'`));
+          continue; // Try again with incremented name
+        }
+
+        // If it's not a collision error, return the original error
+        return result;
+
+      } catch (error) {
+        // Check if the error message indicates a collision
+        if (error.message && error.message.includes('422 Reference already exists')) {
+          attemptNumber++;
+          currentBranchName = `${baseBranchName}-${attemptNumber}`;
+          console.log(chalk.yellow(`⚠️ Branch collision detected, trying '${currentBranchName}'`));
+          continue;
+        }
+
+        // If it's not a collision error, return the error
+        return {
+          success: false,
+          error: error.message,
+          branchName: currentBranchName
+        };
+      }
+    }
+
+    // If we've exceeded max attempts, return failure
+    return {
+      success: false,
+      error: `Failed to create branch after ${maxAttempts} attempts. Too many collisions.`,
+      branchName: currentBranchName,
+      attempts: attemptNumber
+    };
+  }
+
+  /**
    * Create file in specific branch
    * @param {Object} context - Repository context
    * @param {string} branchName - Branch name
@@ -370,7 +440,7 @@ export class DocumentService extends BaseAgent {
           return { success: false, error: errorMessage };
         }
         
-        return { success: true, result };
+        return { success: true, result, commitSha: result.commit?.sha };
       }
 
       // Fallback to old approach if create_or_update_file tool not available
@@ -572,6 +642,7 @@ ${commitMessage}
         success: true,
         filePath,
         commitMessage,
+        commitSha: result.commit?.sha,
         result,
         method: 'direct-commit'
       };
@@ -1005,6 +1076,277 @@ This architectural approach is recommended based on the technical analysis above
 
   sanitizeFileName(fileName) {
     return fileName.replace(/[^a-zA-Z0-9-_]/g, '-').replace(/-+/g, '-');
+  }
+
+  /**
+   * Determine if a decision is complex enough to warrant an ADR
+   * @param {Object} decision - Technical analysis or decision object
+   * @returns {boolean} Whether to create ADR
+   */
+  shouldCreateADR(decision) {
+    if (!decision) return false;
+
+    // Complex decisions that merit ADRs
+    const complexityIndicators = [
+      decision.architecture_decisions?.length > 1,
+      decision.technical_risks?.length > 2,
+      decision.implementation_plan?.phases?.length > 2,
+      JSON.stringify(decision).length > 1000,
+      decision.performance_considerations && decision.performance_considerations !== 'No performance analysis provided',
+      decision.security_considerations && decision.security_considerations !== 'No security analysis provided'
+    ];
+
+    const complexityScore = complexityIndicators.filter(Boolean).length;
+    return complexityScore >= 2; // Require at least 2 complexity indicators
+  }
+
+  /**
+   * Determine if a decision is simple (helper for testing)
+   * @param {Object} decision - Decision object
+   * @returns {boolean} Whether decision is simple
+   */
+  isSimpleDecision(decision) {
+    return !this.shouldCreateADR(decision);
+  }
+
+  /**
+   * Generate smart, short file names
+   * @param {string} prefix - File prefix (BDR, ADR)
+   * @param {string} title - Decision title
+   * @returns {string} Smart file name
+   */
+  generateSmartFileName(prefix, title) {
+    // Extract key terms from title
+    const keyTerms = this.extractKeyTerms(title);
+    const shortTitle = keyTerms.slice(0, 4).join('-'); // Max 4 key terms
+    
+    // Create short, descriptive name
+    const timestamp = Date.now().toString().slice(-6); // Last 6 digits only
+    return `${prefix}-${timestamp}-${shortTitle}`.substring(0, 45); // Max 45 chars
+  }
+
+  /**
+   * Generate human-readable branch names
+   * @param {string} title - Decision or action title
+   * @returns {string} Human-readable branch name
+   */
+  generateBranchName(title) {
+    // Extract key terms and create branch name
+    const keyTerms = this.extractKeyTerms(title);
+    const branchAction = this.inferBranchAction(title);
+    
+    // Combine action with key terms
+    const branchName = `${branchAction}-${keyTerms.slice(0, 3).join('-')}`.substring(0, 45);
+    return branchName.replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  /**
+   * Extract key technical terms from title
+   * @param {string} title - Title to analyze
+   * @returns {Array<string>} Key terms
+   */
+  extractKeyTerms(title) {
+    const lowerTitle = title.toLowerCase();
+    
+    // Common technical keywords to prioritize
+    const technicalKeywords = [
+      'testing', 'unit-tests', 'jest', 'vitest', 'framework',
+      'database', 'postgres', 'mysql', 'mongodb',
+      'auth', 'authentication', 'oauth',
+      'api', 'rest', 'graphql',
+      'performance', 'optimization', 'cache',
+      'security', 'deployment', 'ci-cd',
+      'react', 'vue', 'angular', 'node',
+      'docker', 'kubernetes', 'aws'
+    ];
+    
+    // Find technical keywords in title
+    const foundKeywords = technicalKeywords.filter(keyword => 
+      lowerTitle.includes(keyword.replace('-', ' ')) || lowerTitle.includes(keyword)
+    );
+    
+    // If technical keywords found, use them
+    if (foundKeywords.length > 0) {
+      return foundKeywords.slice(0, 4);
+    }
+    
+    // Otherwise, extract meaningful words
+    const words = lowerTitle
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 2 && !this.isStopWord(word))
+      .slice(0, 4);
+    
+    return words.map(word => word.replace(/s$/, '')); // Remove plural
+  }
+
+  /**
+   * Infer branch action from title
+   * @param {string} title - Title to analyze
+   * @returns {string} Branch action
+   */
+  inferBranchAction(title) {
+    const lowerTitle = title.toLowerCase();
+    
+    if (lowerTitle.includes('add') || lowerTitle.includes('implement') || lowerTitle.includes('create')) {
+      return 'add';
+    } else if (lowerTitle.includes('fix') || lowerTitle.includes('resolve') || lowerTitle.includes('debug')) {
+      return 'fix';
+    } else if (lowerTitle.includes('update') || lowerTitle.includes('improve') || lowerTitle.includes('enhance')) {
+      return 'update';
+    } else if (lowerTitle.includes('remove') || lowerTitle.includes('delete')) {
+      return 'remove';
+    } else if (lowerTitle.includes('refactor') || lowerTitle.includes('restructure')) {
+      return 'refactor';
+    } else {
+      return 'add'; // Default action
+    }
+  }
+
+  /**
+   * Determine if a decision is simple (doesn't need full ADR)
+   * @param {Object} decision - Decision object to analyze
+   * @returns {boolean} Whether decision is simple
+   */
+  isSimpleDecision(decision) {
+    // Count complexity indicators
+    const architectureDecisions = decision.architecture_decisions?.length || 0;
+    const technicalRisks = decision.technical_risks?.length || 0;
+    const implementationPhases = decision.implementation_plan?.phases?.length || 0;
+    
+    // Simple if it's a single decision without complex structures
+    return architectureDecisions <= 1 && technicalRisks === 0 && implementationPhases <= 1;
+  }
+
+  /**
+   * Determine if decision warrants ADR creation
+   * @param {Object} decision - Decision object to analyze
+   * @returns {boolean} Whether to create ADR
+   */
+  shouldCreateADR(decision) {
+    return !this.isSimpleDecision(decision);
+  }
+
+  /**
+   * Check if word is a stop word
+   * @param {string} word - Word to check
+   * @returns {boolean} Whether word is a stop word
+   */
+  isStopWord(word) {
+    const stopWords = [
+      'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'had', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use',
+      'what', 'which', 'should', 'would', 'could', 'provide', 'technical', 'guidance', 'recommended', 'approaches', 'tools', 'best', 'practices'
+    ];
+    return stopWords.includes(word.toLowerCase());
+  }
+
+  /**
+   * Generate readable ADR filename with sequential numbering
+   * @param {string} title - ADR title
+   * @returns {string} Readable ADR filename under 50 characters
+   */
+  generateReadableADRName(title) {
+    // Increment counter for sequential numbering
+    this.adrCounter++;
+    const adrNumber = String(this.adrCounter).padStart(3, '0'); // ADR-001, ADR-002, etc.
+
+    // Extract key terms from title (prioritize technical terms)
+    const keyTerms = this.extractKeyTerms(title);
+    
+    // Create readable suffix by joining key terms
+    const readableSuffix = keyTerms.slice(0, 2).join('-'); // Max 2 key terms to keep it short
+    
+    // Generate filename: ADR-XXX-key-terms.md
+    const fileName = `ADR-${adrNumber}-${readableSuffix}.md`;
+    
+    // Ensure it's under 50 characters by truncating if necessary
+    if (fileName.length > 50) {
+      const maxSuffixLength = 50 - 12; // 50 - "ADR-001-.md".length
+      const truncatedSuffix = readableSuffix.substring(0, maxSuffixLength);
+      return `ADR-${adrNumber}-${truncatedSuffix}.md`;
+    }
+    
+    return fileName;
+  }
+
+  /**
+   * Reset ADR counter (primarily for testing)
+   */
+  resetADRCounter() {
+    this.adrCounter = 0;
+  }
+
+  /**
+   * Generate ADR with verification that document was actually created
+   * @param {string} decisionTitle - Title of the decision
+   * @param {Object} technicalAnalysis - Tech Lead analysis result
+   * @param {Object} context - Enhanced context
+   * @returns {Promise<Object>} ADR generation result with verification
+   */
+  async generateADRWithVerification(decisionTitle, technicalAnalysis, context) {
+    try {
+      // First, generate the ADR normally
+      const adrResult = await this.generateADR(context, technicalAnalysis, decisionTitle);
+      
+      if (!adrResult.success) {
+        return {
+          success: false,
+          verified: false,
+          error: adrResult.error,
+          filePath: adrResult.filePath
+        };
+      }
+
+      // Now verify the document actually exists
+      const documentExists = await this.verifyDocumentExists(context, adrResult.filePath);
+      
+      if (!documentExists) {
+        return {
+          success: false,
+          verified: false,
+          error: 'Document creation claimed success but file not found in repository',
+          filePath: adrResult.filePath,
+          commitSha: adrResult.commitSha
+        };
+      }
+
+      // Document was successfully created and verified
+      return {
+        success: true,
+        verified: true,
+        filePath: adrResult.filePath,
+        fileName: adrResult.fileName,
+        commitSha: adrResult.commitSha,
+        pullRequestUrl: adrResult.pullRequestUrl,
+        content: adrResult.content
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        verified: false,
+        error: error.message,
+        filePath: null
+      };
+    }
+  }
+
+  /**
+   * Verify that a document actually exists in the repository
+   * @param {Object} context - Repository context
+   * @param {string} filePath - Path to verify
+   * @returns {Promise<boolean>} Whether document exists
+   */
+  async verifyDocumentExists(context, filePath) {
+    try {
+      // Try to get the file content to verify it exists
+      const content = await this.getFileContent(context, filePath);
+      return content !== null && content !== undefined;
+    } catch (error) {
+      // If we get an error, the file likely doesn't exist
+      console.log(chalk.yellow(`⚠️ Document verification failed: ${error.message}`));
+      return false;
+    }
   }
 
   parseContentListingResult(result) {

@@ -333,7 +333,9 @@ npm run ba -- --repo=your-org/repo --verbose "test request"
 23. `scripts/start-fastmcp-server.sh` - **Secure container startup** - Docker secrets and validation
 24. `test-container-security.js` - **Security test suite** - Container security validation
 25. `CONTAINER_SECURITY_GUIDE.md` - **Security documentation** - Complete containerization guide
-26. `client/services/__tests__/document-service-github-integration.test.js` - **GitHub MCP Integration Tests** - Comprehensive test suite (11 tests) validating GitHub MCP tool usage, error handling, and smart branch detection
+26. `client/services/__tests__/document-service-branch-detection.test.js` - **GitHub MCP TDD Test Suite** - Comprehensive test suite (10 tests) validating branch collision detection, readable ADR naming, and document creation verification
+27. `client/commands/__tests__/tl-command-integration.test.js` - **TL Command Integration Tests** - Integration tests (3 tests) validating production workflow uses TDD methods
+28. `client/commands/__tests__/production-validation.test.js` - **Production Validation Tests** - Validation tests (4 tests) confirming all GitHub MCP integration issues are resolved
 
 ## Design Patterns Applied
 
@@ -452,16 +454,20 @@ npm run ba -- --repo=your-org/repo --verbose "test request"
 
 ## Recent Improvements
 
-### v1.1.4 - GitHub MCP Integration & Smart Branch Detection (LATEST)
+### v1.1.4 - GitHub MCP Integration & TDD Fixes (LATEST)
 
 - **GitHub MCP Tool Integration**: Implemented direct GitHub MCP tool usage (`create_branch`, `create_or_update_file`, `create_pull_request`) replacing generic reference tools
 - **Smart Branch Detection**: Added intelligent main/master branch fallback logic for repositories using different default branches
-- **Test-Driven GitHub Integration**: Created comprehensive test suite (11 tests) covering GitHub MCP parameter schemas and error handling
+- **Test-Driven Development Fixes**: Applied comprehensive TDD methodology to fix critical GitHub MCP integration issues
+- **Branch Collision Detection**: Implemented `createBranchWithCollisionDetection()` with incremental naming (`add-adr-unit-testing-1`, `add-adr-unit-testing-2`) replacing failures
+- **Readable ADR Filenames**: Added `generateReadableADRName()` producing filenames under 50 characters (e.g., `ADR-001-unit-testing.md`) replacing 255+ character names
+- **Document Creation Verification**: Implemented `generateADRWithVerification()` and `verifyDocumentExists()` to detect false positives when GitHub MCP claims success but files aren't created
+- **Production Workflow Integration**: Updated TL command and document service to use new TDD methods in production workflow
+- **Comprehensive Test Suite**: Created 17 tests (10 TDD + 3 integration + 4 validation) ensuring all GitHub MCP issues are resolved
 - **Enhanced Error Handling**: Implemented GitHub MCP response structure parsing with nested object support (`prResult.pull_request.html_url`)
 - **Repository Compatibility**: Added automatic detection and fallback for 422 validation errors when base branch doesn't exist
 - **Code Refactoring**: Extracted shared `tryBaseBranches()` helper method to eliminate code duplication across branch and PR operations
-- **Legacy Fallback Updates**: Updated all fallback code paths to use smart branch detection instead of hardcoded 'main' branch references
-- **Living Documentation Reliability**: Ensured ADR/BDR generation works across different repository configurations (main vs master default branches)
+- **Living Documentation Reliability**: Ensured ADR/BDR generation works across different repository configurations with proper verification
 
 ### v1.1.4 - Component Architecture & God Object Elimination (Previous)
 

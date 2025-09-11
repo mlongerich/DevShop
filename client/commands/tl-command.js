@@ -73,9 +73,13 @@ export class TLCommand extends BaseCommand {
 
     // Prepare context
     const context = this.prepareRepositoryContext(options, sessionId, {
+      businessRequirements: options.description, // TL agent expects this field
       featureDescription: options.description,
       taskType: 'standalone_analysis',
-      focusArea: options.focusArea
+      focusArea: options.focusArea,
+      // CRITICAL FIX: Pass original user context to TL
+      originalUserRequest: options.originalUserRequest,
+      isSimplifiedFromBA: options.isSimplifiedFromBA
     });
 
     // Execute Tech Lead agent
@@ -374,14 +378,17 @@ export class TLCommand extends BaseCommand {
     console.log(chalk.blue('📄 Generating Architectural Decision Record...'));
 
     try {
-      const adrResult = await this.documentService.generateADR(
-        context,
+      const adrResult = await this.documentService.generateADRWithVerification(
+        title,
         analysisResult,
-        title
+        context
       );
 
-      if (adrResult.success) {
-        console.log(chalk.green(`✅ ADR generated: ${adrResult.fileName}`));
+      if (adrResult.success && adrResult.verified) {
+        console.log(chalk.green(`✅ ADR generated and verified: ${adrResult.fileName}`));
+      } else if (adrResult.success && !adrResult.verified) {
+        console.log(chalk.yellow(`⚠️ ADR generated but verification failed: ${adrResult.error}`));
+        console.log(chalk.gray('Document may not actually exist in repository'));
       } else {
         console.log(chalk.yellow(`⚠️ ADR could not be stored in repository: ${adrResult.error}`));
         console.log(chalk.gray('ADR content generated but not committed to repository'));
