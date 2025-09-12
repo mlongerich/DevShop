@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import path from 'path';
+import crypto from 'crypto';
 import { BaseAgent } from '../agents/base-agent.js';
 
 /**
@@ -36,7 +37,8 @@ export class DocumentService extends BaseAgent {
         context, 
         filePath, 
         bdrContent, 
-        `Add Business Decision Record: ${decisionTitle}`
+        `Add Business Decision Record: ${decisionTitle}`,
+        decisionTitle
       );
 
       await this.sessionService?.logInteraction('bdr_generated', 
@@ -78,7 +80,7 @@ export class DocumentService extends BaseAgent {
     try {
       const adrContent = this.formatADR(decisionTitle, technicalAnalysis, context);
       
-      const fileName = this.generateReadableADRName(decisionTitle);
+      const fileName = this.generateUniqueADRName(decisionTitle);
       const filePath = `documents/adr/${fileName}`;
 
       // Store in target repository
@@ -86,7 +88,8 @@ export class DocumentService extends BaseAgent {
         context, 
         filePath, 
         adrContent, 
-        `Add Architectural Decision Record: ${decisionTitle}`
+        `Add Architectural Decision Record: ${decisionTitle}`,
+        decisionTitle
       );
 
       await this.sessionService?.logInteraction('adr_generated', 
@@ -125,12 +128,14 @@ export class DocumentService extends BaseAgent {
    * @param {string} commitMessage - Commit message
    * @returns {Promise<Object>} Storage result
    */
-  async storeDocumentInRepository(context, filePath, content, commitMessage) {
+  async storeDocumentInRepository(context, filePath, content, commitMessage, decisionTitle = null) {
     try {
       console.log(chalk.blue('🔄 Creating Pull Request for document...'));
       
-      // Create a feature branch for the document
-      const branchName = this.generateBranchName(filePath);
+      // Create a feature branch for the document using collision-resistant naming
+      const branchName = decisionTitle 
+        ? this.generateCollisionResistantBranchName(decisionTitle)
+        : this.generateBranchName(filePath);
       const prResult = await this.createDocumentPullRequest(
         context,
         branchName,
@@ -406,6 +411,64 @@ export class DocumentService extends BaseAgent {
   }
 
   /**
+   * Get file content and SHA if file exists
+   * @param {Object} context - Repository context  
+   * @param {string} filePath - File path to check
+   * @param {string} branchName - Branch name to check in
+   * @returns {Promise<Object>} File existence result with SHA
+   */
+  async getFileContent(context, filePath, branchName) {
+    try {
+      const allTools = await this.discoverTools('github');
+      const getFileTool = allTools.find(tool => tool.name === 'get_file_contents');
+      
+      if (!getFileTool) {
+        return { exists: false, sha: null, content: null, error: 'No get_file_contents tool available' };
+      }
+
+      const fileArgs = {
+        owner: context.repoOwner,
+        repo: context.repoName,
+        path: filePath,
+        ref: branchName
+      };
+
+      const result = await this.mcpClientManager.callTool('github', 'get_file_contents', fileArgs);
+      
+      // Check for GitHub MCP error response (file not found)
+      if (result.isError || result.error) {
+        const errorMessage = this.extractErrorMessage(result);
+        
+        // File not found is expected for new files
+        if (errorMessage.includes('Not Found') || errorMessage.includes('404')) {
+          return { exists: false, sha: null, content: null };
+        }
+        
+        // Other errors should be reported
+        return { exists: false, sha: null, content: null, error: errorMessage };
+      }
+
+      // Extract content and SHA from successful response
+      const content = result.content || result.data?.content || '';
+      const sha = result.sha || result.data?.sha || '';
+      
+      return {
+        exists: true,
+        sha: sha,
+        content: content
+      };
+
+    } catch (error) {
+      // File not found or other errors
+      if (error.message && (error.message.includes('404') || error.message.includes('Not Found'))) {
+        return { exists: false, sha: null, content: null };
+      }
+      
+      return { exists: false, sha: null, content: null, error: error.message };
+    }
+  }
+
+  /**
    * Create file in specific branch
    * @param {Object} context - Repository context
    * @param {string} branchName - Branch name
@@ -421,6 +484,9 @@ export class DocumentService extends BaseAgent {
       const createFileTool = allTools.find(tool => tool.name === 'create_or_update_file');
       
       if (createFileTool) {
+        // Check if file already exists and get SHA if needed (with fallback to main/master)
+        const existingFile = await this.getFileContentWithFallback(context, filePath, branchName);
+        
         // Use GitHub MCP create_or_update_file tool directly
         const fileArgs = {
           owner: context.repoOwner,
@@ -431,11 +497,24 @@ export class DocumentService extends BaseAgent {
           branch: branchName
         };
 
+        // Add SHA only if file exists (required for updates)
+        if (existingFile.exists && existingFile.sha) {
+          fileArgs.sha = existingFile.sha;
+        }
+
         const result = await this.mcpClientManager.callTool('github', 'create_or_update_file', fileArgs);
         
         // Check for GitHub MCP error response
         if (result.isError) {
           const errorMessage = this.extractErrorMessage(result);
+          
+          // Check if it's the "sha wasn't supplied" error and provide helpful message
+          if (errorMessage.includes('"sha" wasn\'t supplied') || errorMessage.includes('sha wasn\'t supplied')) {
+            const enhancedError = `File may already exist and requires SHA for update. ${errorMessage}. SHA required for updates to existing files.`;
+            console.error(chalk.red(`❌ GitHub MCP file creation failed: ${enhancedError}`));
+            return { success: false, error: enhancedError };
+          }
+          
           console.error(chalk.red(`❌ GitHub MCP file creation failed: ${errorMessage}`));
           return { success: false, error: errorMessage };
         }
@@ -1028,47 +1107,6 @@ This architectural approach is recommended based on the technical analysis above
    * @param {string} filePath - Path to file
    * @returns {Promise<string>} File content
    */
-  async getFileContent(context, filePath) {
-    try {
-      const contentTools = await this.findContentRetrievalTools();
-      
-      if (!contentTools) {
-        throw new Error('No content retrieval tools found');
-      }
-
-      const args = {
-        owner: context.repoOwner,
-        repo: context.repoName,
-        path: filePath
-      };
-
-      const result = await this.mcpClientManager.callTool('github', contentTools.name, args);
-      
-      // Parse result and decode base64 content if needed
-      return this.parseFileContentResult(result);
-
-    } catch (error) {
-      throw new Error(`Failed to get file content: ${error.message}`);
-    }
-  }
-
-  /**
-   * Find tools for retrieving file content
-   * @returns {Promise<Object|null>} Best tool for content retrieval
-   */
-  async findContentRetrievalTools() {
-    try {
-      const tools = await this.discoverTools('github');
-      const contentTools = tools.filter(tool => 
-        tool.name.toLowerCase().includes('get') &&
-        (tool.name.toLowerCase().includes('content') || tool.name.toLowerCase().includes('file'))
-      );
-
-      return contentTools.length > 0 ? contentTools[0] : null;
-    } catch (error) {
-      return null;
-    }
-  }
 
   /**
    * Utility functions for parsing and formatting
@@ -1076,6 +1114,149 @@ This architectural approach is recommended based on the technical analysis above
 
   sanitizeFileName(fileName) {
     return fileName.replace(/[^a-zA-Z0-9-_]/g, '-').replace(/-+/g, '-');
+  }
+
+  /**
+   * Generate unique ADR filename to avoid collisions
+   * @param {string} title - Decision title
+   * @returns {string} Unique ADR filename
+   */
+  generateUniqueADRName(title) {
+    const timestamp = Date.now();
+    const uuid = crypto.randomUUID().slice(0, 8);
+    const sanitizedTitle = this.extractKeyTerms(title).slice(0, 2).join('-');
+    return `ADR-${timestamp}-${sanitizedTitle}-${uuid}.md`;
+  }
+
+  /**
+   * Generate collision-resistant branch name with timestamp and UUID
+   * @param {string} title - Decision title or description
+   * @returns {string} Unique branch name
+   */
+  generateCollisionResistantBranchName(title) {
+    const timestamp = Date.now();
+    const uuid = crypto.randomUUID().slice(0, 6);
+    const action = this.inferBranchAction(title);
+    const terms = this.extractKeyTerms(title).slice(0, 2).join('-');
+    return `${action}-${terms}-${timestamp}-${uuid}`.substring(0, 50);
+  }
+
+  /**
+   * Get file content with fallback to main/master branches
+   * @param {Object} context - Repository context  
+   * @param {string} filePath - File path to check
+   * @param {string} targetBranch - Primary branch to check
+   * @returns {Promise<Object>} File existence result with SHA and source branch
+   */
+  async getFileContentWithFallback(context, filePath, targetBranch) {
+    // Try target branch first
+    let result = await this.getFileContent(context, filePath, targetBranch);
+    if (result.exists) {
+      return { ...result, foundInBranch: targetBranch };
+    }
+    
+    // Fallback to main/master branches
+    for (const baseBranch of ['main', 'master']) {
+      result = await this.getFileContent(context, filePath, baseBranch);
+      if (result.exists) {
+        return { ...result, foundInBranch: baseBranch };
+      }
+    }
+    
+    return { exists: false, sha: null, content: null, foundInBranch: null };
+  }
+
+  /**
+   * Parse Tech Lead response with robust error handling
+   * @param {string} response - Raw Tech Lead response
+   * @returns {Object} Parsed technical analysis
+   */
+  parseRobustTechLeadResponse(response) {
+    try {
+      // Try direct JSON parsing first
+      return JSON.parse(response);
+    } catch (error) {
+      // Extract JSON from text content using regex
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (nestedError) {
+          // JSON is malformed, fall back to text parsing
+        }
+      }
+      
+      // Fallback to structured text parsing
+      return this.parseTextResponse(response);
+    }
+  }
+
+  /**
+   * Parse text-based Tech Lead response when JSON fails
+   * @param {string} response - Text response
+   * @returns {Object} Structured analysis object
+   */
+  parseTextResponse(response) {
+    const result = {
+      architecture_decisions: [],
+      technology_recommendations: [],
+      summary: 'Parsed from text response'
+    };
+
+    // Extract architecture decisions
+    const decisionMatch = response.match(/(?:Architecture Decision|Decision):\s*([^\n]+)/i);
+    if (decisionMatch) {
+      result.architecture_decisions.push({
+        decision: decisionMatch[1].trim(),
+        rationale: this.extractRationale(response)
+      });
+    }
+
+    // Extract technology recommendations
+    const techRecommendations = this.extractTechRecommendations(response);
+    if (techRecommendations.length > 0) {
+      result.technology_recommendations = techRecommendations;
+    }
+
+    // Extract summary from first paragraph
+    const summaryMatch = response.match(/^([^\n]{50,200})/m);
+    if (summaryMatch) {
+      result.summary = summaryMatch[1].trim();
+    }
+
+    return result;
+  }
+
+  /**
+   * Extract rationale from text response
+   * @param {string} text - Response text
+   * @returns {string} Extracted rationale
+   */
+  extractRationale(text) {
+    const rationaleMatch = text.match(/(?:Rationale|Because|Since):\s*([^\n]+)/i);
+    return rationaleMatch ? rationaleMatch[1].trim() : 'No rationale provided';
+  }
+
+  /**
+   * Extract technology recommendations from text
+   * @param {string} text - Response text
+   * @returns {Array} Technology recommendations
+   */
+  extractTechRecommendations(text) {
+    const recommendations = [];
+    const techLines = text.match(/(?:Technology|Tech|Frontend|Testing|Build):\s*([^\n]+)/gi) || [];
+    
+    techLines.forEach(line => {
+      const match = line.match(/([^:]+):\s*(.+)/);
+      if (match) {
+        recommendations.push({
+          category: match[1].trim(),
+          recommendation: match[2].trim()
+        });
+      }
+    });
+    
+    return recommendations;
   }
 
   /**
@@ -1362,17 +1543,6 @@ This architectural approach is recommended based on the technical analysis above
     return [];
   }
 
-  parseFileContentResult(result) {
-    // This would need to be adapted based on actual GitHub MCP response format
-    if (result && result.content) {
-      // If content is base64 encoded
-      if (result.encoding === 'base64') {
-        return Buffer.from(result.content, 'base64').toString('utf8');
-      }
-      return result.content;
-    }
-    return '';
-  }
 
   extractTitleFromMarkdown(content) {
     const titleMatch = content.match(/^#\s+(.+)$/m);

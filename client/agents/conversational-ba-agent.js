@@ -82,11 +82,8 @@ export class ConversationalBAAgent extends BAAgent {
       // Check for similar issues/conversations before proceeding
       await this.checkSimilarIssuesAndConversations();
 
-      // Analyze repository for context
-      const repoAnalysis = await this.analyzeRepository(enhancedContext);
-      
-      // Generate initial BA response with conversation awareness
-      const baResponse = await this.generateConversationResponse(enhancedContext, repoAnalysis, null);
+      // Generate initial BA response with business focus (no technical repository analysis)
+      const baResponse = await this.generateConversationResponse(enhancedContext, null, null);
       
       await this.logInteraction('conversation_started', 'Started conversation', {
         repository: enhancedContext.getRepository(),
@@ -292,16 +289,19 @@ Guidelines:
 - Don't create issues yet - gather requirements first
 - Build understanding gradually through multiple turns
 
-Repository context will be provided to help you ask relevant questions.`;
+Focus on understanding business requirements regardless of technical implementation.`;
 
       userPrompt = `I need help with a project in the repository ${context.repoOwner}/${context.repoName}.
 
 User request: "${context.initialInput}"
 
-Repository analysis:
-${repoAnalysis?.structure || 'Repository analysis not available'}
+Please start our requirements gathering conversation by asking relevant clarifying questions to understand what the user wants to accomplish. Focus on:
+- What specific outcomes they want to achieve
+- Who the users are and their needs  
+- What success looks like from a business perspective
+- Scope and priorities
 
-Please start our requirements gathering conversation by asking relevant clarifying questions to understand what the user wants to accomplish.`;
+Do not make assumptions about technical implementation - focus on business requirements.`;
 
     } else {
       // Continuation conversation system prompt  
